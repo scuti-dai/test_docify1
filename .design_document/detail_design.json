@@ -1,0 +1,1664 @@
+{
+  "class_design": {
+    "class_diagram": [
+      "@startuml",
+      "class IRToolTask {",
+      "    - GIJIROKU : IRToolTask (Enumメンバー、値はstr型)",
+      "    - EXPECTED_QA : IRToolTask (Enumメンバー、値はstr型)",
+      "}",
+      "class QAItem {",
+      "    - question : str",
+      "    - answer : list<str>",
+      "}",
+      "class CommentSection {",
+      "    - title : str",
+      "    - comments : list<str>",
+      "}",
+      "class GijirokuData {",
+      "    - file_name : str",
+      "    - audio_length : str",
+      "    - created_date : str",
+      "    - feedback : list<CommentSection>",
+      "    - positive_comments : list<CommentSection>",
+      "    - negative_comments : list<CommentSection>",
+      "    - qa : list<QAItem>",
+      "    +from_dict(data_dict: dict[str, Any]) : GijirokuData",
+      "}",
+      "class ExpectedQAData {",
+      "    - qa : dict<str, dict<str, list<QAItem>>>",
+      "    +from_dict(data_dict: Dict[str, Any]) : ExpectedQAData",
+      "}",
+      "class LLMService {",
+      "    - llm : AnthropicLLM",
+      "    - schema : str",
+      "    +generate_qa(category, pdf) : pd.DataFrame",
+      "    +check_duplicate(qa: str, pdf) : pd.DataFrame",
+      "    +pre_marge_check(qa_list: List[Dict[str, Any]]) : pd.DataFrame",
+      "    +marge_qa_group(qa_group: List[Dict]) : pd.DataFrame",
+      "}",
+      "class QACreator {",
+      "    - file_path : str",
+      "    - pdf : PdfAttachment",
+      "    - llm : LLMService",
+      "    - qa : pandas.DataFrame",
+      "    - qa_edit : pandas.DataFrame",
+      "    +create() : List[Dict[str, str>]",
+      "    +_create_qa(self) : None",
+      "    +_check_duplicate() : None",
+      "}",
+      "class QAMerge {",
+      "    - CATEGORIES : list<str>",
+      "    - COLUMNS : list<str>",
+      "    - llm : LLMService",
+      "    - qa_df : pandas.DataFrame",
+      "    - merged_qa : pandas.DataFrame",
+      "    +merge(self) : list<dict<str, str>>",
+      "}",
+      "class SessionData {",
+      "    - username : str",
+      "    - is_verified : bool",
+      "}",
+      "class SessionManager {",
+      "    - sessions : dict<str, SessionData>",
+      "    +login(self, username: str, password: str) : Optional[str]",
+      "    +is_verified(session_id: str) : bool",
+      "    +is_valid_id(session_id: str) : bool",
+      "}",
+      "class AiServerError {",
+      "}",
+      "QACreator *-- LLMService",
+      "QAMerge *-- LLMService",
+      "SessionManager *-- SessionData",
+      "@enduml"
+    ],
+    "files": {
+      "data_structures.py": [
+        {
+          "class_id": "IRToolTask",
+          "class_name": "IRToolTask",
+          "class_detailed_design": {
+            "class_name": "IRToolTask",
+            "class_description": "IRToolTaskクラスは、Enum（列挙型）を継承したクラスであり、IRツールにおけるタスクの種類を定義しています。それぞれのタスクは固有の文字列値を持ち、'GIJIROKU'は「meeting-minutes」（議事録）、'EXPECTED_QA'は「expected-qa」（想定Q&A）を表します。このクラスを利用することで、IRツール内で扱うタスクの種類を明確かつ安全に管理できます。",
+            "field_definitions": [
+              {
+                "name": "GIJIROKU",
+                "type": "IRToolTask (Enumメンバー、値はstr型)",
+                "description": "会議の議事録を表すEnumメンバーです。"
+              },
+              {
+                "name": "EXPECTED_QA",
+                "type": "IRToolTask (Enumメンバー、値はstr型)",
+                "description": "想定されるQ&Aタスクを表すEnumメンバーです。"
+              }
+            ],
+            "method_definitions": [],
+            "field_detailed_definitions": "\n`GIJIROKU`\n\n----\n\n- 型: IRToolTask (Enumメンバー、値はstr型)\nIRToolTaskクラスのGIJIROKUは、'meeting-minutes'という文字列値を持つEnumメンバーです。主に会議の議事録作成や管理など、議事録に関連するタスクを識別するために使用されます。Enumを利用することで、コード内で議事録タスクを明確かつ安全に参照できるようになります。\n\n`EXPECTED_QA`\n\n----\n\n- 型: IRToolTask (Enumメンバー、値はstr型)\nIRToolTaskクラスのEXPECTED_QAは、'expected-qa'という文字列値を持つEnumメンバーです。これは、想定される質問と回答（Q&A）に関するタスクを識別するために利用されます。例えば、会議やイベントなどで予想される質問とその回答を準備・管理する用途で使われます。Enumを使うことで、Q&Aタスクを一貫して扱うことができます。\n",
+            "method_detailed_definitions": "このクラスにはメソッドが定義されていないため、このセクションは省略されます。\n\n"
+          }
+        }
+      ],
+      "doc_conversion.py": [
+        {
+          "class_id": "QAItem",
+          "class_name": "QAItem",
+          "class_detailed_design": {
+            "class_name": "QAItem",
+            "class_description": "QAItemクラスは、質問とその回答を管理するためのデータモデルです。PydanticのBaseModelを継承しているため、データのバリデーションやシリアライズが容易に行えます。このクラスは、質問（question）とその回答（answer）のペアを表現し、回答は文字列のリストとして複数の回答を保持できます。主にQ&A形式のデータを扱う場面で利用されることが想定されます。",
+            "field_definitions": [
+              {
+                "name": "question",
+                "type": "str",
+                "description": "質問文を表す文字列型のフィールドです。"
+              },
+              {
+                "name": "answer",
+                "type": "list<str>",
+                "description": "回答を格納する文字列型リストのフィールドです。"
+              }
+            ],
+            "method_definitions": [],
+            "field_detailed_definitions": "\n`question`\n\n----\n\n- 型: str\nこのフィールドは、QAItemインスタンスにおける質問内容を格納します。ユーザーやシステムが入力した質問文を文字列として保持し、関連する回答とペアで管理されます。\n\n`answer`\n\n----\n\n- 型: list<str>\nこのフィールドは、質問に対する一つまたは複数の回答を文字列のリストとして保持します。各要素は個別の回答を表し、複数の回答が必要な場合にも対応できます。\n",
+            "method_detailed_definitions": "このクラスにはメソッドが定義されていないため、このセクションは省略されます。\n\n"
+          }
+        },
+        {
+          "class_id": "CommentSection",
+          "class_name": "CommentSection",
+          "class_detailed_design": {
+            "class_name": "CommentSection",
+            "class_description": "CommentSectionクラスは、コメントセクションを表現するためのデータモデルです。このクラスはpydanticのBaseModelを継承しており、主にドキュメントや議事録などのコメントを構造化して管理する用途で使われます。各コメントセクションにはタイトル（title）があり、そのセクションに属する複数のコメント（comments）がリストとして格納されます。型アノテーションにより、titleは文字列、commentsは文字列のリストであることが保証されています。データのバリデーションやシリアライズなど、pydanticの機能を活用できます。",
+            "field_definitions": [
+              {
+                "name": "title",
+                "type": "str",
+                "description": "コメントセクションのタイトルを表す文字列です。"
+              },
+              {
+                "name": "comments",
+                "type": "list<str>",
+                "description": "コメントの内容を格納する文字列のリストです。"
+              }
+            ],
+            "method_definitions": [],
+            "field_detailed_definitions": "\n`title`\n\n----\n\n- 型: str\nこのフィールドは、CommentSectionクラスのコメントセクション全体のタイトルや見出しを格納します。例えば、記事や投稿のコメント欄のタイトルとして使用されます。文字列型（str）であり、ユーザーやシステムによって任意のタイトルが設定されます。\n\n`comments`\n\n----\n\n- 型: list<str>\nこのフィールドは、CommentSectionクラスに紐づく複数のコメントを格納します。各コメントは文字列（str）としてリストに追加され、コメント欄に表示される内容となります。コメントの数に制限はなく、ユーザーが投稿したコメントを順番に保持します。\n",
+            "method_detailed_definitions": "このクラスにはメソッドが定義されていないため、このセクションは省略されます。\n\n"
+          }
+        },
+        {
+          "class_id": "GijirokuData",
+          "class_name": "GijirokuData",
+          "class_detailed_design": {
+            "class_name": "GijirokuData",
+            "class_description": "GijirokuDataクラスは、議事録データを構造化して管理するためのデータモデルです。ファイル名、音声の長さ、作成日、フィードバック、ポジティブコメント、ネガティブコメント、Q&A情報など、議事録に関連するさまざまな情報をフィールドとして保持します。また、外部から渡された辞書型データ（data_dict）をもとに、各フィールドを適切に初期化するためのfrom_dict静的メソッドを提供しています。from_dictメソッドでは、コメントのカテゴリごとにCommentSectionオブジェクトを生成し、Q&A情報もQAItemオブジェクトとしてリスト化します。これにより、議事録データの取り扱いが容易になり、他の処理や出力フォーマットへの変換が効率的に行えます。",
+            "field_definitions": [
+              {
+                "name": "file_name",
+                "type": "str",
+                "description": "議事録データに関連付けられたファイル名を表す文字列です。"
+              },
+              {
+                "name": "audio_length",
+                "type": "str",
+                "description": "音声データの長さを示す文字列です。"
+              },
+              {
+                "name": "created_date",
+                "type": "str",
+                "description": "議事録データが作成された日付を表す文字列です。"
+              },
+              {
+                "name": "feedback",
+                "type": "list<CommentSection>",
+                "description": "フィードバックコメントのセクションをまとめたリストです。"
+              },
+              {
+                "name": "positive_comments",
+                "type": "list<CommentSection>",
+                "description": "ポジティブなコメントをカテゴリごとにまとめたリストです。"
+              },
+              {
+                "name": "negative_comments",
+                "type": "list<CommentSection>",
+                "description": "ネガティブなコメントをカテゴリごとにまとめたリストです。"
+              },
+              {
+                "name": "qa",
+                "type": "list<QAItem>",
+                "description": "議事録に関連するQ&A項目のリストです。"
+              }
+            ],
+            "method_definitions": [
+              {
+                "name": "from_dict(data_dict: dict[str, Any])",
+                "return_type": "GijirokuData",
+                "description": "from_dictは、外部から渡された辞書型データ（data_dict）をもとに、GijirokuDataオブジェクトを生成する静的メソッドです。コメントやQ&A情報をカテゴリごとに整理し、構造化されたデータモデルとして返します。"
+              }
+            ],
+            "field_detailed_definitions": "\n`file_name`\n\n----\n\n- 型: str\nこのフィールドは、議事録データが保存されているファイルの名前を格納します。ファイル名は一意にそのデータを識別するために使用され、データの管理や参照時に利用されます。\n\n`audio_length`\n\n----\n\n- 型: str\nこのフィールドは、議事録に関連する音声ファイルの再生時間や長さを表します。データ辞書に\"audio_length\"が存在しない場合は\"N/A\"が設定されます。音声データの内容を把握する際や、再生時間の目安として利用されます。\n\n`created_date`\n\n----\n\n- 型: str\nこのフィールドは、議事録データが生成または記録された日付情報を格納します。日付はデータの履歴管理や、いつ作成されたかを確認するために使用されます。\n\n`feedback`\n\n----\n\n- 型: list<CommentSection>\nこのフィールドは、議事録に対するフィードバックコメントをカテゴリごとにまとめたCommentSectionオブジェクトのリストです。各CommentSectionにはカテゴリ名（タイトル）と、そのカテゴリに属するコメントのリストが含まれます。議事録の内容に対する全体的な意見や感想を整理するために利用されます。\n\n`positive_comments`\n\n----\n\n- 型: list<CommentSection>\nこのフィールドは、議事録に対して寄せられた肯定的なコメントをカテゴリごとにまとめたCommentSectionオブジェクトのリストです。各カテゴリにはタイトルとコメントのリストが含まれ、議事録の良かった点や評価された内容を整理して記録します。\n\n`negative_comments`\n\n----\n\n- 型: list<CommentSection>\nこのフィールドは、議事録に対して寄せられた否定的なコメントをカテゴリごとにまとめたCommentSectionオブジェクトのリストです。各カテゴリにはタイトルとコメントのリストが含まれ、議事録の改善点や課題点を整理して記録します。\n\n`qa`\n\n----\n\n- 型: list<QAItem>\nこのフィールドは、議事録に関する質問とその回答をまとめたQAItemオブジェクトのリストです。各QAItemには質問内容とその回答が含まれ、議事録の内容理解や補足説明のために利用されます。関連性のあるQ&Aのみが格納されます。\n",
+            "method_detailed_definitions": "\n**`from_dict(data_dict: dict[str, Any])` -> GijirokuDataオブジェクト。例: GijirokuData(file_name='meeting1.mp3', audio_length=120.5, created_date='2024-06-01', feedback=[CommentSection(title='内容', comments=['説明が分かりやすかった']), ...], positive_comments=[...], negative_comments=[...], qa=[QAItem(question='議題は何ですか？', answer='新製品の発表です'), ...])**\n\n----\n\n- 入力パラメータ:\n  - `data_dict` (Dict[str, Any]): 議事録データを含む辞書型データ。例: {\"file_name\": \"meeting1.mp3\", \"audio_length\": 120.5, \"created_date\": \"2024-06-01\", \"data\": {\"comments\": [{\"class\": \"feedback\", \"category\": \"内容\", \"content\": \"説明が分かりやすかった\"}, ...], \"QAs\": [{\"question_report\": \"議題は何ですか？\", \"answer_report\": \"新製品の発表です\"}, ...]}}\n- 戻り値: GijirokuDataオブジェクト。例: GijirokuData(file_name='meeting1.mp3', audio_length=120.5, created_date='2024-06-01', feedback=[CommentSection(title='内容', comments=['説明が分かりやすかった']), ...], positive_comments=[...], negative_comments=[...], qa=[QAItem(question='議題は何ですか？', answer='新製品の発表です'), ...]) (GijirokuData)\n- 例外:\n   - `KeyError`: data_dictに必要なキー（例: 'data', 'comments', 'file_name', 'created_date'など）が存在しない場合に発生します。\n   - `TypeError`: data_dictの構造が想定と異なる場合や、コメントやQ&Aの各要素が辞書でない場合に発生します。\n\nこのメソッドは、議事録データを含む辞書（data_dict）を受け取り、GijirokuDataクラスのインスタンスを生成します。data_dict内の\"comments\"リストを走査し、各コメントの\"class\"（feedback, positive_comment, negative_comment）と\"category\"に応じて、COMMENT_CATEGORIESで定義されたカテゴリごとにCommentSectionオブジェクトを作成し、コメント内容を格納します。また、\"QAs\"リストからはis_qa_relevent関数で関連性を判定したQ&Aのみを抽出し、QAItemオブジェクトとしてリスト化します。最終的に、file_name, audio_length, created_date, feedback, positive_comments, negative_comments, qaをフィールドとするGijirokuDataインスタンスを返します。audio_lengthがdata_dictに存在しない場合は\"N/A\"を設定します。呼び出しはGijirokuData.from_dict(data_dict)のように行います。エッジケースとして、\"comments\"や\"QAs\"が空の場合は対応するリストが空のまま返されます。また、\"audio_length\"が存在しない場合は\"N/A\"となります。\n"
+          }
+        },
+        {
+          "class_id": "ExpectedQAData",
+          "class_name": "ExpectedQAData",
+          "class_detailed_design": {
+            "class_name": "ExpectedQAData",
+            "class_description": "ExpectedQADataクラスは、カテゴリごとおよびサブカテゴリごとに整理されたQA（質問と回答）のデータ構造を表現するためのPydanticモデルです。主に、外部から与えられた辞書型データ（data_dict）を、内部で定義されたカテゴリ・サブカテゴリ構造に従って整形し、QAItemオブジェクトのリストとして格納します。from_dict静的メソッドを通じて、入力データを所定の形式に変換し、ExpectedQADataインスタンスを生成する役割を持ちます。",
+            "field_definitions": [
+              {
+                "name": "qa",
+                "type": "dict<str, dict<str, list<QAItem>>>",
+                "description": "カテゴリごとにサブカテゴリを持ち、それぞれのサブカテゴリにQAItemのリストを格納する多重辞書です。"
+              }
+            ],
+            "method_definitions": [
+              {
+                "name": "from_dict(data_dict: Dict[str, Any])",
+                "return_type": "ExpectedQAData",
+                "description": "外部から与えられたQAデータの辞書を、内部のカテゴリ・サブカテゴリ構造に従って整形し、ExpectedQADataインスタンスとして返す静的メソッド。"
+              }
+            ],
+            "field_detailed_definitions": "\n`qa`\n\n----\n\n- 型: dict<str, dict<str, list<QAItem>>>\nqaフィールドは、最上位がカテゴリ名（str）をキーとする辞書で、その値はさらにサブカテゴリ名（str）をキーとした辞書です。サブカテゴリごとの値はQAItemオブジェクトのリスト（list<QAItem>）となっています。これにより、カテゴリ→サブカテゴリ→QAItemリストという階層構造で、質問と回答のデータを整理・格納できます。主に複数カテゴリ・サブカテゴリにまたがるQAデータを効率的に管理・参照するために利用されます。\n",
+            "method_detailed_definitions": "\n**`from_dict(data_dict: Dict[str, Any])` -> ExpectedQAData型のインスタンス。カテゴリごと・サブカテゴリごとにQAItemのリストが格納されている。例：ExpectedQAData(qa={\"カテゴリA\": {\"サブカテゴリA1\": [QAItem(question=\"Q1\", answer=[\"A1\"])]}})**\n\n----\n\n- 入力パラメータ:\n  - `data_dict` (Dict[str, Any]): 外部から与えられるQAデータの辞書。主なキーは\"data\"で、値はList[Dict[str, Any]]型。各要素は、例：{\"question\": \"質問内容\", \"answer\": \"回答内容\", \"category\": \"サブカテゴリ名\"} のようなQA情報を持つ。\n- 戻り値: ExpectedQAData型のインスタンス。カテゴリごと・サブカテゴリごとにQAItemのリストが格納されている。例：ExpectedQAData(qa={\"カテゴリA\": {\"サブカテゴリA1\": [QAItem(question=\"Q1\", answer=[\"A1\"])]}}) (ExpectedQAData)\n- 例外:\n   - `KeyError`: data_dict[\"data\"]内のQA情報の\"category\"がcat_dictに存在しない場合に発生する。\n\nfrom_dictは、外部から渡されたQAデータ（data_dict）を、ExpectedQADataクラスが要求するカテゴリ・サブカテゴリごとの構造に変換する静的メソッドです。入力のdata_dictは、\"data\"キーに複数のQA情報（質問・回答・サブカテゴリ名）を持つリストを含みます。メソッド内部では、まずカテゴリ・サブカテゴリの空リスト構造（input_dict）を生成し、サブカテゴリ名からカテゴリ名を逆引きする辞書（cat_dict）を作成します。次に、各QA情報について、サブカテゴリ名からカテゴリ名を取得し、回答が文字列の場合はリストに変換した上で、QAItemインスタンスとして該当するカテゴリ・サブカテゴリのリストに追加します。最終的に、整形済みのinput_dictをqa引数としてExpectedQADataインスタンスを生成し、返却します。\n\nエッジケースとして、data_dict[\"data\"]が空リストの場合は、全カテゴリ・サブカテゴリのリストが空のExpectedQADataが返ります。また、回答がNoneや空文字列の場合は、そのままリスト化されて格納されます。サブカテゴリ名がcat_dictに存在しない場合はKeyError例外が発生します。\n\n呼び出し例：\nExpectedQAData.from_dict({\"data\": [{\"question\": \"Q1\", \"answer\": \"A1\", \"category\": \"サブカテゴリA1\"}]})\n"
+          }
+        }
+      ],
+      "expected_QA.py": [
+        {
+          "class_id": "LLMService",
+          "class_name": "LLMService",
+          "class_detailed_design": {
+            "class_name": "LLMService",
+            "class_description": "LLMServiceクラスは、LLM（大規模言語モデル）を活用して、企業資料（主にPDF）から投資家向けの質問と回答（QA）を自動生成・管理するためのサービスクラスです。主な用途は、企業の業績や経営に関する資料から、投資判断に役立つ質問をカテゴリごとに生成し、重複や関連性の高い質問の整理・マージを行うことです。AnthropicLLMを通じて外部のLLM APIと連携し、PDF資料の内容をもとにQAリストの生成、重複チェック、マージ提案、マージ実行など一連のQA管理プロセスを自動化します。",
+            "field_definitions": [
+              {
+                "name": "llm",
+                "type": "AnthropicLLM",
+                "description": "AnthropicLLMクラスのインスタンスで、LLM（大規模言語モデル）へのAPIリクエストを担当します。"
+              },
+              {
+                "name": "schema",
+                "type": "str",
+                "description": "QA生成時にLLMへ渡すJSONスキーマ定義を格納する文字列型フィールドです。"
+              }
+            ],
+            "method_definitions": [
+              {
+                "name": "generate_qa(category, pdf)",
+                "return_type": "pd.DataFrame",
+                "description": "指定されたカテゴリに基づき、PDF資料から投資家向けの質問と回答（QA）を自動生成し、pandas.DataFrame形式で返すメソッド。"
+              },
+              {
+                "name": "check_duplicate(qa: str, pdf)",
+                "return_type": "pd.DataFrame",
+                "description": "カテゴリ間で重複している質問を検出し、より適切なカテゴリに残すべき質問以外を削除する指示をDataFrame形式で返すメソッド。"
+              },
+              {
+                "name": "pre_marge_check(qa_list: List[Dict[str, Any]])",
+                "return_type": "pd.DataFrame",
+                "description": "QAリスト内の重複・関連性の高い質問をグループ化し、マージが推奨される質問IDグループと推奨カテゴリ、理由をDataFrameで返す。"
+              },
+              {
+                "name": "marge_qa_group(qa_group: List[Dict])",
+                "return_type": "pd.DataFrame",
+                "description": "QAグループ（質問と回答のリスト）をLLMを用いて1つの包括的なQAにマージし、DataFrame形式で返すメソッド。"
+              }
+            ],
+            "field_detailed_definitions": "\n`llm`\n\n----\n\n- 型: AnthropicLLM\nllmフィールドは、AnthropicLLMクラスのインスタンスです。コンストラクタで初期化され、Anthropic社のAPIエンドポイント（\"https://api.anthropic.com\"）、環境変数から取得したAPIキー（os.environ[\"ANTHROPIC_ACCESS_KEY\"]）、モデル名（\"claude-3-5-sonnet-20241022\"）を引数として渡しています。このフィールドは、クラス内の各メソッドでLLMに対するデータ処理や質問生成、重複チェック、マージなどの操作を行う際に利用されます。主に、process_dataメソッドを通じてLLMとのやり取りを抽象化し、PDF資料から質問や回答を生成するための中心的な役割を担っています。\n\n`schema`\n\n----\n\n- 型: str\nschemaフィールドは、QA（質問・回答）生成時にLLMへ渡すJSONスキーマの定義を文字列として保持しています。スキーマは、カテゴリ（category）、質問（question）、回答（answer）という必須プロパティを持つオブジェクト型で、各プロパティの型や説明、カテゴリの選択肢（enum）などが詳細に記述されています。generate_qaメソッドなどで、LLMに対して出力形式を厳密に指定するために利用され、出力結果の構造を保証する役割を果たします。スキーマ自体はPythonのdict型ではなく、JSON形式の文字列として格納されているため、LLMへのプロンプト内でそのまま利用されます。\n",
+            "method_detailed_definitions": "\n**`generate_qa(category, pdf)` -> カテゴリごとに生成された質問と回答のリストを含むpandas.DataFrame。例: pd.DataFrame([{'category': '全体の業績予測', 'question': '今期の売上高は前年と比べてどのように推移していますか？', 'answer': '売上高は前年同期比で10%増加しています。'}, {'category': '全体の業績予測', 'question': '来期の業績見通しは？', 'answer': ''}])。**\n\n----\n\n- 入力パラメータ:\n  - `category` (str): 生成する質問のカテゴリ名。例: \"全体の業績予測\"、\"適時開示\" など。\n  - `pdf` (PdfAttachment): 解析対象となるPDFファイルのオブジェクト。例: PdfAttachment(filename=\"2023_決算.pdf\", content=b\"%PDF-1.4...\")。\n- 戻り値: カテゴリごとに生成された質問と回答のリストを含むpandas.DataFrame。例: pd.DataFrame([{'category': '全体の業績予測', 'question': '今期の売上高は前年と比べてどのように推移していますか？', 'answer': '売上高は前年同期比で10%増加しています。'}, {'category': '全体の業績予測', 'question': '来期の業績見通しは？', 'answer': ''}])。 (pd.DataFrame)\n- 例外:\n   - `AttributeError`: self.llmまたはself.schemaが未定義の場合に発生します。\n   - `ValueError`: response.json()の戻り値がQAリスト形式でない場合や、DataFrame変換に失敗した場合に発生します。\n   - `TypeError`: pdfがPdfAttachment型でない場合や、categoryがstr型でない場合に発生します。\n\ngenerate_qaメソッドは、指定されたカテゴリ（例: \"全体の業績予測\"）とPDFファイル（PdfAttachment型）を入力として受け取り、そのPDF資料の内容をもとに投資家視点で重要な質問と回答（QA）を自動生成します。内部的にはAnthropicLLMなどの大規模言語モデル（LLM）APIを活用し、資料の内容を解析しながら、カテゴリに沿った15件以上の質問とその回答を生成します。出力はカテゴリ・質問・回答を持つJSONリストであり、これをpandas.DataFrameに変換して返します。カテゴリに該当する情報が資料に存在しない場合は、回答が空文字列となる質問も生成されます。主に投資判断や資料レビューの効率化を目的としています。呼び出しはself.generate_qa(\"全体の業績予測\", pdf_attachment)のように行います。エッジケースとして、PDFが空またはカテゴリに関する情報が全くない場合でも、カテゴリに沿った質問は生成されますが、回答は空文字列となります。\n\n**`check_duplicate(qa: str, pdf)` -> カテゴリ間で重複している質問の削除指示を含むDataFrame。各行は重複質問の削除操作を示す辞書で、例: pd.DataFrame([{\"manipulation\": \"delete\", \"category\": \"人事\", \"id\": \"5678\"}, {\"manipulation\": \"delete\", \"category\": \"全体の業績予測\", \"id\": \"1234\"}])**\n\n----\n\n- 入力パラメータ:\n  - `qa` (str): カテゴリごとに作成された質問案リストを文字列形式で渡します。例: '[{\"id\": \"1234\", \"category\": \"全体の業績予測\", \"question\": \"今期の売上予測は？\"}, {\"id\": \"5678\", \"category\": \"人事\", \"question\": \"新規採用計画は？\"}]'\n  - `pdf` (PdfAttachment): 企業資料（主にPDF形式）を表すオブジェクト。例: PdfAttachment(filename='2024_report.pdf', content=b'...')\n- 戻り値: カテゴリ間で重複している質問の削除指示を含むDataFrame。各行は重複質問の削除操作を示す辞書で、例: pd.DataFrame([{\"manipulation\": \"delete\", \"category\": \"人事\", \"id\": \"5678\"}, {\"manipulation\": \"delete\", \"category\": \"全体の業績予測\", \"id\": \"1234\"}]) (pd.DataFrame)\n- 例外:\n   - `AttributeError`: responseオブジェクトがjson()メソッドを持たない場合に発生します。\n   - `ValueError`: LLMから返却されたjsonが不正でpandas.DataFrameへの変換に失敗した場合に発生します。\n   - `TypeError`: response.json()の返却値がリストや辞書でない場合に発生します。\n\nこのメソッドは、企業資料（PDF）とカテゴリごとの質問案リスト（文字列）を受け取り、LLM（大規模言語モデル）を用いてカテゴリ間で重複している質問を検出します。重複が見つかった場合、より適切なカテゴリに残すべき質問以外を削除する指示（manipulation: delete, category, id）をjson形式で返します。返却されたjsonをpandasのDataFrameに変換して返します。主な用途は、投資家向けの質問リストの整理・最適化です。呼び出し時には、qa（質問案リスト）とpdf（企業資料）を渡します。エッジケースとして、質問案リストに重複が全くない場合は空のDataFrameが返ります。逆に、全ての質問が重複している場合は、残すべき質問以外全ての削除指示が返ります。LLMの応答が不正な場合やjsonパースに失敗した場合は例外が発生する可能性があります。\n\n**`pre_marge_check(qa_list: List[Dict[str, Any]])` -> 重複または関連性の高い質問グループを示すDataFrame。各行は {'group_ids': ['qa_001', 'qa_002'], 'merge_category': '業績関連', 'reason': '内容が類似しているため'} のような情報を持ちます。**\n\n----\n\n- 入力パラメータ:\n  - `qa_list` (List[Dict[str, Any]]): マージ対象となる質問リスト。各要素は質問を表す辞書で、例えば [{'id': 'qa_001', 'category': '業績関連', 'question': '今期の売上予測は？'}, {'id': 'qa_002', 'category': '業績関連', 'question': '今期の売上高はどれくらいですか？'}] のような形式です。\n- 戻り値: 重複または関連性の高い質問グループを示すDataFrame。各行は {'group_ids': ['qa_001', 'qa_002'], 'merge_category': '業績関連', 'reason': '内容が類似しているため'} のような情報を持ちます。 (pd.DataFrame)\n- 例外:\n   - `AttributeError`: self.llmが正しく初期化されていない場合に発生します。\n   - `ValueError`: response.json()の返却値が期待する形式でない場合に発生します。\n   - `TypeError`: qa_listの型がList[Dict[str, Any]]でない場合に発生します。\n   - `Exception`: 外部LLM APIとの通信エラーや予期しないエラーが発生した場合。\n\npre_marge_checkメソッドは、企業資料から抽出されたQAリスト（質問リスト）を受け取り、同じカテゴリ内で内容が重複または関連性の高い質問をグループ化します。AnthropicLLMを用いて外部のLLM APIに質問リストを送信し、重複グループの抽出とマージ後の推奨カテゴリ、理由を取得します。返却値は、各グループごとに質問IDのリスト（group_ids）、マージ後の推奨カテゴリ（merge_category）、マージ理由（reason）を持つDataFrameです。例えば、似た内容の質問が複数存在する場合、それらのIDが一つのグループとしてまとめられます。入力リストが空の場合は、空のDataFrameが返されることが想定されます。外部LLMの応答が不正な場合や通信エラーが発生した場合は例外が発生する可能性があります。\n\n**`marge_qa_group(qa_group: List[Dict])` -> マージ後の質問と回答を含む1行のDataFrame。例: pd.DataFrame([{'question': '今期の業績予測と注力事業の成長見込みについて教えてください。', 'answer': '売上は前年比10%増、新規事業は今期20%成長を目指します。'}])**\n\n----\n\n- 入力パラメータ:\n  - `qa_group` (List[Dict]): マージ対象となる質問グループのリスト。各要素は辞書型で、例えば [{'category': '業績関連', 'question': '今期の業績予測は？', 'answer': '売上は前年比10%増を見込む'}, {'category': '業績関連', 'question': '注力事業の成長見込みは？', 'answer': '新規事業は今期20%成長を目指す'}] のような内容。\n- 戻り値: マージ後の質問と回答を含む1行のDataFrame。例: pd.DataFrame([{'question': '今期の業績予測と注力事業の成長見込みについて教えてください。', 'answer': '売上は前年比10%増、新規事業は今期20%成長を目指します。'}]) (pd.DataFrame)\n- 例外:\n   - `AttributeError`: self.llmが正しく初期化されていない場合、process_data呼び出し時に発生する可能性があります。\n   - `TypeError`: qa_groupの型がList[Dict]でない場合、またはresponse.json()の戻り値が期待する形式でない場合に発生する可能性があります。\n   - `ValueError`: LLMの返却値がJSONとしてパースできない場合や、必要なキーが不足している場合に発生する可能性があります。\n\nこのメソッドは、企業資料から抽出された複数のQA（質問と回答）のグループを受け取り、それらをLLM（AnthropicLLM）を利用して1つの包括的なQA（質問と回答）に統合します。入力としてList[Dict]型のqa_groupを受け取り、各辞書にはカテゴリ、質問文、回答文などが含まれます。メソッド内部では、投資家視点の指示文とともに、qa_groupの内容をLLMに渡し、カテゴリを維持しつつ内容を統合するよう指示します。LLMから返されたマージ後の質問・回答を1行のDataFrameとして返します。\n\nエッジケースとして、qa_groupが空リストの場合は、LLMに空の質問グループを渡すことになり、返却されるDataFrameも空または不完全な内容になる可能性があります。また、qa_groupの各要素に必要なキー（例: 'question', 'answer', 'category'）が欠落している場合、LLMの出力が期待通りにならないことがあります。\n\n呼び出し例:\nmerged_df = self.marge_qa_group([{'category': '業績関連', 'question': '今期の業績予測は？', 'answer': '売上は前年比10%増を見込む'}, {'category': '業績関連', 'question': '注力事業の成長見込みは？', 'answer': '新規事業は今期20%成長を目指す'}])\n\n戻り値は、マージ後の質問と回答を含む1行のDataFrameです。\n"
+          }
+        },
+        {
+          "class_id": "QACreator",
+          "class_name": "QACreator",
+          "class_detailed_design": {
+            "class_name": "QACreator",
+            "class_description": "QACreatorクラスは、指定されたPDFファイルから想定される質問と回答（QA）を自動生成するためのクラスです。PDFファイルを読み込み、事前に定義されたカテゴリごとにLLM（大規模言語モデル）を用いてQAを生成します。その後、生成されたQAの中から重複する質問をLLMで検出し、重複しているものを削除します。最終的にカテゴリとQAを含んだJSON形式のデータを返します。主に業績予測や開示、経営基盤、人事などのカテゴリに対応しています。",
+            "field_definitions": [
+              {
+                "name": "file_path",
+                "type": "str",
+                "description": "PDFファイルのパスを保持する文字列型のフィールド。"
+              },
+              {
+                "name": "pdf",
+                "type": "PdfAttachment",
+                "description": "PDFファイルの内容を保持するPdfAttachment型のフィールド。"
+              },
+              {
+                "name": "llm",
+                "type": "LLMService",
+                "description": "LLM（大規模言語モデル）サービスのインスタンスを保持するフィールド。"
+              },
+              {
+                "name": "qa",
+                "type": "pandas.DataFrame",
+                "description": "生成されたQA（質問と回答）を格納するDataFrame型のフィールド。"
+              },
+              {
+                "name": "qa_edit",
+                "type": "pandas.DataFrame",
+                "description": "重複チェック後のQA編集情報を格納するDataFrame型のフィールド。"
+              }
+            ],
+            "method_definitions": [
+              {
+                "name": "create()",
+                "return_type": "List[Dict[str, str>]",
+                "description": "PDFファイルからカテゴリごとに自動生成したQA（質問・回答）を重複排除した上で、カテゴリとQAを含むJSON形式のリストとして返すメソッドです。"
+              },
+              {
+                "name": "_create_qa(self)",
+                "return_type": "None",
+                "description": "各カテゴリごとにLLMを用いてPDFから質問と回答（QA）を生成し、クラス内のqa属性（pandas.DataFrame）に追加する内部メソッドです。"
+              },
+              {
+                "name": "_check_duplicate()",
+                "return_type": "None",
+                "description": "カテゴリ間で生成されたQA（質問と回答）の重複をLLM（大規模言語モデル）を用いて検出し、重複している質問を削除する内部メソッド。"
+              }
+            ],
+            "field_detailed_definitions": "\n`file_path`\n\n----\n\n- 型: str\nQACreatorクラスのインスタンス生成時に、想定質問を生成したいPDFファイルのパスを受け取り、その値を保持します。PDFファイルの読み込みや処理の際に利用される、クラスの基本的な入力情報です。\n\n`pdf`\n\n----\n\n- 型: PdfAttachment\nfile_pathで指定されたPDFファイルをバイナリモードで読み込み、ファイル名と内容をPdfAttachmentオブジェクトとして保持します。LLMServiceによるQA生成や重複チェックの際に、PDFの内容を参照するために使用されます。\n\n`llm`\n\n----\n\n- 型: LLMService\nQA生成や重複チェックなど、PDFの内容に基づく自然言語処理を行うためのLLMServiceインスタンスを保持します。createメソッドや内部メソッドで、質問生成や重複確認のために利用されます。\n\n`qa`\n\n----\n\n- 型: pandas.DataFrame\n各カテゴリごとにLLMServiceを使って生成されたQA（質問と回答）をpandas.DataFrameとして保持します。カテゴリごとのQAを連結し、重複チェック後に最終的なQAリストとして利用されます。createメソッドの返却値の元データとなります。\n\n`qa_edit`\n\n----\n\n- 型: pandas.DataFrame\nLLMServiceのcheck_duplicateメソッドによって、QAの重複を判定し、削除すべきQAの情報（idやmanipulationなど）をpandas.DataFrameとして保持します。qaフィールドから重複した質問を除外する際に参照されます。\n",
+            "method_detailed_definitions": "\n**`create()` -> カテゴリとQA（質問・回答）を含むJSON形式のリストを返します。例：[\n  {\n    \"カテゴリ\": \"業績関連\",\n    \"質問\": \"2024年度の業績予測は？\",\n    \"回答\": \"2024年度は売上高が前年比10%増加する見込みです。\"\n  },\n  {\n    \"カテゴリ\": \"開示・財務・人事\",\n    \"質問\": \"人事異動の予定は？\",\n    \"回答\": \"2024年4月に人事異動を予定しています。\"\n  }\n]**\n\n----\n\n- 入力パラメータ： なし\n- 戻り値: カテゴリとQA（質問・回答）を含むJSON形式のリストを返します。例：[\n  {\n    \"カテゴリ\": \"業績関連\",\n    \"質問\": \"2024年度の業績予測は？\",\n    \"回答\": \"2024年度は売上高が前年比10%増加する見込みです。\"\n  },\n  {\n    \"カテゴリ\": \"開示・財務・人事\",\n    \"質問\": \"人事異動の予定は？\",\n    \"回答\": \"2024年4月に人事異動を予定しています。\"\n  }\n] (List[Dict[str, str>])\n- 例外:\n   - `ValueError`: PDFファイルの内容が不正またはQA生成に失敗した場合に発生します。\n   - `RuntimeError`: LLMの応答が得られない場合や、重複排除処理に失敗した場合に発生します。\n\nこのメソッドはQACreatorクラスのインスタンスに対して呼び出され、PDFファイルからカテゴリごとにLLM（大規模言語モデル）を用いてQA（質問・回答）を自動生成します。まず、_create_qa()メソッドでカテゴリごとにQAを生成し、次に_check_duplicate()メソッドで重複する質問を検出・削除します。最終的に、カテゴリとQAを含むJSON形式のリスト（List[Dict[str, str]]）として返します。入力パラメータはなく、返り値はカテゴリとQAが格納されたリストです。エッジケースとして、PDFから有効なQAが生成されなかった場合は空リストが返されます。また、内部で使用するLLMやPDFの読み込みに失敗した場合は例外が発生する可能性があります。主に業績予測や開示、経営基盤、人事などのカテゴリに対応しています。\n\n**`_create_qa(self)` -> None**\n\n----\n\n- 入力パラメータ： なし\n- 戻り値: なし\n- 例外: なし\n\nこのメソッドはQACreatorクラスの内部メソッドであり、事前に定義された6つのカテゴリ（全体の業績予測、セグメント別の業績予測、注力事業の業績予測、適時開示、経営基盤、人事）ごとに、LLM（self.llm）を使ってPDF（self.pdf）から質問と回答のペアを生成します。各カテゴリについてself.llm.generate_qa(category, self.pdf)を呼び出し、その結果（pandas.DataFrame）をself.qa（pandas.DataFrame）に連結（pd.concat）して蓄積します。self.qaはクラスの属性であり、すでに初期化されている必要があります。メソッド自体は値を返しません。エッジケースとして、self.llmやself.pdfが未定義または不正な場合、またはgenerate_qaが例外を投げた場合にはエラーとなります。カテゴリごとに生成されるQAが空の場合でも、self.qaには何も追加されませんが、エラーにはなりません。\n\n**`_check_duplicate()` -> None**\n\n----\n\n- 入力パラメータ： なし\n- 戻り値: なし\n- 例外:\n   - `AttributeError`: self.qaまたはself.qa_editが正しく初期化されていない場合、またはDataFrameの操作時に必要な列が存在しない場合に発生する。\n   - `KeyError`: self.qa_editに'manipulation'列や'id'列が存在しない場合に発生する。\n   - `TypeError`: self.qaがDataFrame型でない場合や、self.llm.check_duplicateの返却値が期待する型でない場合に発生する。\n\nこのメソッドはQACreatorクラスの内部処理として、PDFから生成されたQAデータ（self.qa）に対して重複質問の検出と削除を行います。まず、QAデータフレームに一意のID（index値を文字列化したもの）を付与します。その後、LLM（self.llm.check_duplicate）を利用して、QAデータとPDF情報をもとに重複質問を判定します。LLMの判定結果（self.qa_edit）に基づき、削除対象（manipulation列が\"delete\"のもの）のIDを抽出し、元のQAデータから該当する質問を除外します。\n\nこのメソッドはパラメータや戻り値を持たず、主にself.qaとself.qa_editというインスタンス変数を操作します。エッジケースとして、QAデータが空の場合や、LLMの返却結果が不正な場合（manipulation列が存在しない、IDが一致しない等）は、何も削除されないか、例外が発生する可能性があります。\n\n通常はQACreatorクラスの他のメソッドから呼び出され、QA生成後の重複排除処理として利用されます。\n"
+          }
+        },
+        {
+          "class_id": "QAMerge",
+          "class_name": "QAMerge",
+          "class_detailed_design": {
+            "class_name": "QAMerge",
+            "class_description": "QAMergeクラスは、複数のQA（質問・回答）データをカテゴリごとにグループ化し、類似する質問をマージするための処理を提供します。主な用途は、複数のJSON形式のQAリストを受け取り、カテゴリごとにマージ候補を特定し、LLM（大規模言語モデル）サービスを利用して質問グループを統合します。最終的に、マージ後のQAデータをリスト形式で返します。カテゴリ分け、マージ候補の抽出、グループ単位でのマージ、マージされなかったQAの保持など、QAデータの統合処理を一括して行うことができます。",
+            "field_definitions": [
+              {
+                "name": "CATEGORIES",
+                "type": "list<str>",
+                "description": "QAのカテゴリ名を格納したリスト。"
+              },
+              {
+                "name": "COLUMNS",
+                "type": "list<str>",
+                "description": "QAデータフレームのカラム名リスト。"
+              },
+              {
+                "name": "llm",
+                "type": "LLMService",
+                "description": "QAマージ処理に利用するLLMサービスのインスタンス。"
+              },
+              {
+                "name": "qa_df",
+                "type": "pandas.DataFrame",
+                "description": "全QAデータを格納したデータフレーム。"
+              },
+              {
+                "name": "merged_qa",
+                "type": "pandas.DataFrame",
+                "description": "マージ後のQAデータを格納するデータフレーム。"
+              }
+            ],
+            "method_definitions": [
+              {
+                "name": "merge(self)",
+                "return_type": "list<dict<str, str>>",
+                "description": "QAデータをカテゴリごとに分割し、類似する質問グループをLLMを用いてマージし、最終的にマージ後のQAデータをリスト形式で返すメインロジック。"
+              }
+            ],
+            "field_detailed_definitions": "\n`CATEGORIES`\n\n----\n\n- 型: list<str>\nQA_SUB_CATEGORIESというリストのリストを平坦化（sum関数で結合）したもので、全てのQAカテゴリ名（文字列）が格納されている。クラス全体で共通して利用され、QAデータをカテゴリごとに処理する際の基準となる。\n\n`COLUMNS`\n\n----\n\n- 型: list<str>\nQAデータをpandasのDataFrameで管理する際に使用するカラム名（\"category\", \"question\", \"answer\"）のリスト。QAデータの主要な属性を表し、データフレームの列指定や抽出、マージ時に利用される。\n\n`llm`\n\n----\n\n- 型: LLMService\nQAのマージ候補抽出やグループマージ処理を行うための外部サービス（LLMService）のインスタンス。pre_marge_checkやmarge_qa_groupなどのメソッドを通じて、QAの内容をAI的に解析・統合する役割を担う。\n\n`qa_df`\n\n----\n\n- 型: pandas.DataFrame\n初期化時に受け取ったQAリスト（リストのリスト）を平坦化し、各QAにソースファイルインデックス（source_df）と一意なID（id）を付与した上で、pandasのDataFrameとして格納したもの。カテゴリごとの抽出やマージ処理の基礎データとなる。\n\n`merged_qa`\n\n----\n\n- 型: pandas.DataFrame\nマージ処理の結果を格納するためのpandasのDataFrame。初期状態ではCOLUMNSで定義されたカラムのみを持つ空のデータフレームで、mergeメソッドの処理過程でマージ済みQAやマージされなかったQAが順次追加されていく。最終的にマージ後の全QAデータがここに集約される。\n",
+            "method_detailed_definitions": "\n**`merge(self)` -> マージ後のQAデータのリスト。各要素はDict[str, str]型で、例: [{\"id\": \"qa_001\", \"question\": \"業績予測は？\", \"answer\": \"2024年度は増収増益の見込みです。\", \"category\": \"業績関連\"}, {\"id\": \"qa_002\", \"question\": \"人事異動は？\", \"answer\": \"4月に人事異動を予定しています。\", \"category\": \"開示・財務・人事\"}]**\n\n----\n\n- 入力パラメータ： なし\n- 戻り値: マージ後のQAデータのリスト。各要素はDict[str, str]型で、例: [{\"id\": \"qa_001\", \"question\": \"業績予測は？\", \"answer\": \"2024年度は増収増益の見込みです。\", \"category\": \"業績関連\"}, {\"id\": \"qa_002\", \"question\": \"人事異動は？\", \"answer\": \"4月に人事異動を予定しています。\", \"category\": \"開示・財務・人事\"}] (list<dict<str, str>>)\n- 例外:\n   - `KeyError`: DataFrameから存在しないカラムを参照した場合に発生します。\n   - `AttributeError`: self.llmが正しく初期化されていない場合や、marge_qa_group/pre_marge_checkメソッドが存在しない場合に発生します。\n   - `TypeError`: DataFrame操作やメソッド呼び出し時に型が不正な場合に発生します。\n\nこのメソッドはQAMergeクラスの主要な処理であり、QAデータ（質問・回答のペア）をカテゴリごとに分割し、各カテゴリ内で類似する質問グループを特定してマージします。処理の流れは以下の通りです。まず、self.CATEGORIESで定義されたカテゴリごとにself.qa_df（pandas.DataFrame型）から該当するQAデータを抽出します。カテゴリ内のデータが空の場合はスキップします。次に、カテゴリ内のQAリストをself.llm.pre_marge_check(qa_list)でマージ候補グループを抽出します。抽出されたグループごとに、group_idsに含まれるQAを集め、self.llm.marge_qa_group(qa_group)でLLMを使ってグループ全体をマージします。マージ結果が空でなければ、カテゴリ情報を付与し、self.merged_qa（pandas.DataFrame型）に追加します。マージされたQAは元のカテゴリデータから除外します。最後に、マージされなかったQAもself.merged_qaに追加し、全カテゴリの処理が終わったらself.merged_qaをリスト形式（to_dict('records')）で返します。エッジケースとして、カテゴリ内のQAが空の場合や、マージ候補が見つからない場合はそのまま元のQAを保持します。例外処理は明示的に記載されていませんが、DataFrame操作やLLM呼び出し時に型やデータ不整合があるとエラーが発生する可能性があります。\n"
+          }
+        }
+      ],
+      "session_manager.py": [
+        {
+          "class_id": "SessionData",
+          "class_name": "SessionData",
+          "class_detailed_design": {
+            "class_name": "SessionData",
+            "class_description": "SessionDataクラスは、ユーザーのセッション情報を管理するためのデータモデルです。pydanticのBaseModelを継承しており、型安全かつバリデーション付きでデータを扱うことができます。このクラスは主に、ユーザー名と認証状態（認証済みかどうか）を保持する役割を持っています。ファイルヘッダーの内容から、セッション情報の暗号化や保存処理などで利用される可能性があります。",
+            "field_definitions": [
+              {
+                "name": "username",
+                "type": "str",
+                "description": "ユーザー名を表す文字列型のフィールドです。"
+              },
+              {
+                "name": "is_verified",
+                "type": "bool",
+                "description": "ユーザーが認証済みかどうかを示す真偽値型のフィールドです。"
+              }
+            ],
+            "method_definitions": [],
+            "field_detailed_definitions": "\n`username`\n\n----\n\n- 型: str\nこのフィールドは、セッションに関連付けられたユーザーの名前を格納します。ユーザーを一意に識別するために使用され、システム内でユーザーの認証や権限管理などに利用されます。必須項目であり、空であってはなりません。\n\n`is_verified`\n\n----\n\n- 型: bool\nこのフィールドは、ユーザーが認証済み（verified）であるかどうかを示します。デフォルト値はTrueに設定されており、特別な理由がない限りユーザーは認証済みとして扱われます。システム内でユーザーのアクセス権限や機能制限を判断する際に利用されます。\n",
+            "method_detailed_definitions": "このクラスにはメソッドが定義されていないため、このセクションは省略されます。\n\n"
+          }
+        },
+        {
+          "class_id": "SessionManager",
+          "class_name": "SessionManager",
+          "class_detailed_design": {
+            "class_name": "SessionManager",
+            "class_description": "SessionManagerクラスは、ユーザーのセッション管理を行うためのクラスです。ユーザーがログインする際にセッションIDを発行し、セッション情報を内部の辞書で管理します。また、セッションIDが有効かどうかや、セッションが認証済みかどうかを判定する機能も提供します。主にユーザー認証やセッションの有効性確認に利用されます。",
+            "field_definitions": [
+              {
+                "name": "sessions",
+                "type": "dict<str, SessionData>",
+                "description": "現在のセッション情報を管理するための辞書型フィールドです。セッションIDをキーとして、対応するSessionDataオブジェクトを保持します。"
+              }
+            ],
+            "method_definitions": [
+              {
+                "name": "login(self, username: str, password: str)",
+                "return_type": "Optional[str]",
+                "description": "ユーザー認証情報を検証し、認証に成功した場合は新しいセッションIDを発行してセッション情報を管理するメソッド。"
+              },
+              {
+                "name": "is_verified(session_id: str)",
+                "return_type": "bool",
+                "description": "指定したセッションIDが認証済みかどうかを判定するメソッドです。"
+              },
+              {
+                "name": "is_valid_id(session_id: str)",
+                "return_type": "bool",
+                "description": "指定されたセッションIDが現在有効なセッションIDかどうかを判定するメソッドです。"
+              }
+            ],
+            "field_detailed_definitions": "\n`sessions`\n\n----\n\n- 型: dict<str, SessionData>\nsessionsフィールドは、SessionManagerクラスのインスタンスが管理する全てのセッションを格納する辞書型（dict）です。キーは新規ログイン時に生成される一意なセッションID（文字列）であり、値はユーザー情報を含むSessionDataオブジェクトです。ユーザーがログインすると、check_access_info関数で認証されたユーザー情報を元にSessionDataインスタンスが作成され、sessionsに追加されます。このフィールドは、セッションの有効性や認証状態の確認（is_verified, is_valid_idメソッド）など、セッション管理の中心的な役割を担っています。\n",
+            "method_detailed_definitions": "\n**`login(self, username: str, password: str)` -> ログインに成功した場合は新規発行されたセッションID（例: 'a3f1c2e4b5d6478e9f0a1b2c3d4e5f6a'）を返し、認証に失敗した場合はNoneを返す。**\n\n----\n\n- 入力パラメータ:\n  - `username` (str): ログインしようとするユーザーのユーザー名。例: 'taro_yamada'\n  - `password` (str): ユーザーのパスワード。例: 'secureP@ssw0rd'\n- 戻り値: ログインに成功した場合は新規発行されたセッションID（例: 'a3f1c2e4b5d6478e9f0a1b2c3d4e5f6a'）を返し、認証に失敗した場合はNoneを返す。 (Optional[str])\n- 例外:\n   - `KeyError`: self.sessionsが正しく初期化されていない場合や、SessionDataの初期化に必要なuser_infoのキーが不足している場合に発生する可能性があります。\n   - `TypeError`: user_infoが辞書型でない場合や、SessionDataの初期化に不正な型の値が渡された場合に発生する可能性があります。\n\nこのメソッドは、ユーザー名とパスワードを受け取り、ユーザー認証を行います。まずcheck_access_info関数を使って認証情報を検証し、認証に成功した場合はuuid4().hexで新しいセッションIDを生成します。その後、user_infoの内容からSessionDataインスタンスを生成し、self.sessions辞書にセッションIDをキー、SessionDataを値として保存します。認証に失敗した場合（user_infoがNoneの場合）はNoneを返します。正常にセッションが作成された場合は新しいセッションID（str型）を返します。セッションIDは16進数文字列です。エッジケースとして、ユーザー名またはパスワードが誤っている場合や、check_access_infoがNoneを返す場合は、セッションは作成されずNoneが返ります。\n\n**`is_verified(session_id: str)` -> 指定されたセッションIDが有効かつ認証済みであればTrue、そうでなければFalseを返します。例: True**\n\n----\n\n- 入力パラメータ:\n  - `session_id` (str): 判定対象となるセッションID。例: \"a1b2c3d4e5f6g7h8\"\n- 戻り値: 指定されたセッションIDが有効かつ認証済みであればTrue、そうでなければFalseを返します。例: True (bool)\n- 例外:\n   - `AttributeError`: self.sessions[session_id]がis_verified属性を持たない場合に発生します。\n\nこのメソッドは、SessionManagerクラスのインスタンスが管理しているセッション情報（self.sessions）に対して、引数で与えられたsession_idが存在し、かつそのセッションが認証済み（is_verified属性がTrue）であるかどうかを判定します。主にユーザーがログイン後の認証状態を確認するために利用されます。呼び出し方法は、SessionManagerのインスタンスに対してis_verified(session_id)とします。session_idがself.sessionsに存在しない場合や、該当セッションのis_verifiedがFalseの場合はFalseを返します。session_idがNoneや空文字列の場合は、self.sessionsに存在しないため必ずFalseとなります。self.sessionsの値が不正（例: session_idに対する値がNoneやis_verified属性を持たない場合）だとAttributeErrorが発生する可能性があります。\n\n**`is_valid_id(session_id: str)` -> セッションIDが有効（管理されているセッションIDの中に存在）であればTrue、無効であればFalseを返します。例: True または False**\n\n----\n\n- 入力パラメータ:\n  - `session_id` (str): 検証したいセッションIDを表す文字列。例: \"a1b2c3d4e5f6g7h8\"\n- 戻り値: セッションIDが有効（管理されているセッションIDの中に存在）であればTrue、無効であればFalseを返します。例: True または False (bool)\n- 例外: なし\n\nこのメソッドは、SessionManagerクラスのインスタンスが管理しているセッションIDの集合（通常は辞書やセットなど）に、引数として渡されたsession_idが含まれているかどうかを判定します。ユーザーがログインした際に発行されたセッションIDが、現在有効なセッションとして管理されているかを確認するために利用されます。呼び出し方は、SessionManagerのインスタンス（例: manager）がある場合、manager.is_valid_id(\"a1b2c3d4e5f6g7h8\")のように使用します。session_idが空文字列やNoneの場合でも、辞書のキーとして存在しなければFalseが返ります。例外は発生しませんが、self.sessionsが正しく初期化されていない場合は意図しない動作となる可能性があります。\n"
+          }
+        }
+      ],
+      "minutesgen/transcribe_with_azure_speech.py": [
+        {
+          "class_id": "AiServerError",
+          "class_name": "AiServerError",
+          "class_detailed_design": {
+            "class_name": "AiServerError",
+            "class_description": "このクラスは、AIサーバー関連のエラーを表すためのカスタム例外クラスです。Pythonの組み込み例外クラス Exception を継承しており、AIサーバーで発生した特定のエラーを識別し、例外処理を行う際に利用されます。クラス自体には独自のフィールドやメソッドは定義されておらず、主に例外の種類を明確にするために使われます。",
+            "field_definitions": [],
+            "method_definitions": [],
+            "field_detailed_definitions": "このクラスにはフィールドが定義されていないため、このセクションは省略されます。\n\n",
+            "method_detailed_definitions": "このクラスにはメソッドが定義されていないため、このセクションは省略されます。\n\n"
+          }
+        }
+      ]
+    }
+  },
+  "method_design": {
+    "files": {
+      "doc_conversion.py": [
+        {
+          "method_id": "convert_gijiroku_to_docx",
+          "method_name": "convert_gijiroku_to_docx",
+          "method_detail": {
+            "description": "この関数は、IRミーティングの議事録データ（GijirokuData型）を受け取り、Word（docx）形式のDocumentオブジェクトとして整形・出力します。タイトル、音声ファイル名・長さ・作成日付などの基本情報、今後の改善点・要望、投資家フィードバック（ポジティブ・ネガティブ）、QA一覧をそれぞれ適切なレイアウトでWord文書に追加します。各セクションは太字やフォントサイズの調整、リスト形式などで見やすく整形されます。コメントやQAが空の場合は「なし」と表示されます。呼び出しは、GijirokuData型のインスタンスを引数として渡すことで行います。エッジケースとして、コメントやQAが空リストの場合でもエラーにならず、「なし」と表示されるように設計されています。",
+            "params": "  - data: GijirokuData",
+            "returns": "作成されたdocxファイルのDocumentオブジェクト。例: IRミーティングの議事録タイトル、音声ファイル名や長さ、作成日付、今後の改善点・要望、投資家フィードバック（ポジティブ・ネガティブ）、QA一覧が適切にレイアウトされたWord文書。",
+            "params_example": "  例:\n```python\n{\n    \"file_name\": \"meeting1.wav\",\n    \"audio_length\": \"01:23:45\",\n    \"created_date\": \"2024-06-01\",\n    \"feedback\": [\n        {\n            \"title\": \"改善点\",\n            \"comments\": [\n                \"音声が聞き取りにくい\"\n            ]\n        }\n    ],\n    \"positive_comments\": [\n        {\n            \"title\": \"IR説明\",\n            \"comments\": [\n                \"説明が分かりやすい\"\n            ]\n        }\n    ],\n    \"negative_comments\": [\n        {\n            \"title\": \"質疑応答\",\n            \"comments\": [\n                \"回答が曖昧\"\n            ]\n        }\n    ],\n    \"qa\": [\n        {\n            \"question\": \"今後の展望は？\",\n            \"answer\": [\n                \"売上拡大を目指す\"\n            ]\n        }\n    ]\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "convert_expected_qa_to_xslx",
+          "method_name": "convert_expected_qa_to_xslx",
+          "method_detail": {
+            "description": "この関数は、ExpectedQAData型のデータを受け取り、その内容をExcelファイル（openpyxl.Workbook）として出力します。data.qaは大分類（カテゴリ）、小分類（サブカテゴリ）、質問、回答の階層構造を持つ辞書であり、各Q&AをExcelの1行として展開します。回答が複数ある場合は、各回答の前に「・」を付けて改行区切りで1セルにまとめます。Excelの1行目には「大分類」「小分類」「想定質問」「推奨回答」のヘッダーが追加され、全データ行が続きます。さらに、テーブルスタイル（TableStyleMedium9）が適用され、行・列のストライプ表示が有効になります。呼び出しは convert_expected_qa_to_xslx(data) のように行い、返り値のWorkbookオブジェクトを openpyxl の save メソッド等でファイル出力できます。エッジケースとして、data.qaが空の場合はヘッダーのみのExcelが生成されます。data.qaの各要素が不正な場合（例えば、qa_listがリストでない等）は例外が発生する可能性があります。",
+            "params": "  - data: ExpectedQAData",
+            "returns": "openpyxl.Workbook オブジェクト。例えば、ワークシートには「大分類」「小分類」「想定質問」「推奨回答」の列があり、各行にQ&Aデータが格納されたExcelファイルが生成されます。",
+            "params_example": "  例:\n```python\n{\n    \"業務フロー\": {\n        \"申請\": [\n            {\n                \"question\": \"申請方法は？\",\n                \"answer\": [\n                    \"Webから申請できます\"\n                ]\n            }\n        ]\n    }\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "convert_to_docx_data",
+          "method_name": "convert_to_docx_data",
+          "method_detail": {
+            "description": "この関数は、引数dataがGijirokuData型の場合はconvert_gijiroku_to_docx関数を呼び出してdocxドキュメントを生成し、ExpectedQAData型の場合はconvert_expected_qa_to_xslx関数を呼び出してxlsxドキュメントを生成します。生成されたドキュメントはio.BytesIOを用いてバイナリデータとして保存され、そのバイナリ値を返します。主にファイルダウンロードやAPIレスポンスなどで利用されます。エッジケースとして、dataがどちらの型でもない場合や、変換対象のデータが空の場合、または内部で例外が発生した場合はエラーとなります。",
+            "params": "  - data: GijirokuData または ExpectedQAData",
+            "returns": "生成されたdocxまたはxlsxファイルのバイナリデータ（例: b'PK\\x03\\x04...docxファイルのバイナリ内容...'）。",
+            "params_example": "  例:\n```python\n{\n    \"speaker\": \"田中\",\n    \"content\": \"本日の議題について説明します。\"\n}\n```\n",
+            "return_example": ""
+          }
+        }
+      ],
+      "doc_conversion_helpers.py": [
+        {
+          "method_id": "add_separator_line",
+          "method_name": "add_separator_line",
+          "method_detail": {
+            "description": "この関数は、python-docxライブラリのParagraphオブジェクトを受け取り、その段落の下部に区切り線（下線）を追加します。内部的には、段落のXML要素に直接アクセスし、w:pBdr要素とw:bottom要素を挿入することで、Word文書上に下線を表示させます。主にWord文書の装飾や視覚的な区切りを追加したい場合に利用されます。呼び出し方法は add_separator_line(paragraph) です。段落が不正な型の場合や、内部のXML構造が想定外の場合は例外が発生する可能性がありますが、通常はpython-docxで生成されたParagraphオブジェクトであれば問題なく動作します。既に下線が設定されている場合は上書きされます。Noneや不正なオブジェクトを渡した場合はAttributeError等が発生します。",
+            "params": "  - paragraph: docx.text.paragraph.Paragraph",
+            "returns": "なし",
+            "params_example": "",
+            "return_example": ""
+          }
+        }
+      ],
+      "expected_QA.py": [
+        {
+          "method_id": "qa_merge",
+          "method_name": "qa_merge",
+          "method_detail": {
+            "description": "このメソッドは、複数のQA（質問と回答）リストを受け取り、それらを一つのリストにマージします。入力が1つのリストのみの場合は、そのまま返します。2つ以上のリストが渡された場合は、QAMergeクラスを使ってマージ処理を行い、統合されたQAリストを返します。主に、複数の情報源から得られたQAデータを一元化したい場合に利用されます。エッジケースとして、qa_listが空の場合や、各リストの中身が空の場合は、QAMergeの実装次第で空リストが返る可能性があります。呼び出しは、qa_merge(qa_list)のように行います。",
+            "params": "  - qa_list: List[List[Dict[str, str]]]",
+            "returns": "マージされたQAペアのリスト。各要素は質問と回答を持つ辞書です。例: [{\"question\": \"売上高は？\", \"answer\": \"100億円です。\"}, {\"question\": \"利益は？\", \"answer\": \"10億円です。\"}]",
+            "params_example": "  例:\n```python\n[\n    [\n        {\n            \"question\": \"売上高は？\",\n            \"answer\": \"100億円です。\"\n        }\n    ],\n    [\n        {\n            \"question\": \"利益は？\",\n            \"answer\": \"10億円です。\"\n        }\n    ]\n]\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "create_qa",
+          "method_name": "create_qa",
+          "method_detail": {
+            "description": "create_qaは、PDFファイルのパスを受け取り、そのファイル内容を元にQA（質問と回答）を生成するためのグローバル関数です。内部的にはQACreatorクラスのインスタンスを作成し、そのcreateメソッドを呼び出すことでQAを生成します。主な用途は、業績関連や開示・財務・人事などのカテゴリに関する質問と回答を自動的に抽出し、JSON形式で返すことです。呼び出し方法は、create_qa('/path/to/file.pdf')のようにPDFファイルのパスを引数として渡します。エッジケースとして、ファイルパスが存在しない場合やPDFの内容が不正な場合、QACreatorの内部処理で例外が発生する可能性があります。また、PDFが空の場合やQAが抽出できない場合は、空のJSONやエラー内容を含むJSONが返されることがあります。",
+            "params": "  - file_path: str",
+            "returns": "QAの内容を含むJSON文字列。例: '{\"category\": \"業績関連\", \"question\": \"2024年度の業績予測は？\", \"answer\": \"売上高は前年比10%増加を見込んでいます。\"}'",
+            "params_example": "",
+            "return_example": ""
+          }
+        }
+      ],
+      "main.py": [
+        {
+          "method_id": "transform_comment_data",
+          "method_name": "transform_comment_data",
+          "method_detail": {
+            "description": "この関数は、会議のコメントデータなどのリスト（original_data）を受け取り、'class'（発言者など）と'category'（質問・回答など）ごとに内容を整理したネストされた辞書へ変換します。各コメントは'content'と'topic'を持ち、同じ'class'・'category'のコメントはリストとしてまとめられます。呼び出しはtransform_comment_data(original_data)のように行い、返り値は変換後の辞書です。エッジケースとして、original_dataが空の場合は空の辞書を返します。また、各itemに'class'や'category'が存在しない場合はKeyError例外が発生します。データの重複や順序は保持されます。",
+            "params": "  - original_data: List[Dict[str, Any]]",
+            "returns": "変換後のデータを格納した辞書。キーは'class'（例: '発言者A'）、値はさらに'category'（例: '質問'）をキーとし、'content'と'topic'を持つ辞書のリストが格納される。例: {'発言者A': {'質問': [{'content': 'この議題について説明してください。', 'topic': '議題1'}], '回答': [{'content': '議題1は...です。', 'topic': '議題1'}]}}",
+            "params_example": "  例:\n```python\n[\n    {\n        \"class\": \"発言者A\",\n        \"category\": \"質問\",\n        \"content\": \"この議題について説明してください。\",\n        \"topic\": \"議題1\"\n    },\n    {\n        \"class\": \"発言者A\",\n        \"category\": \"回答\",\n        \"content\": \"議題1は...です。\",\n        \"topic\": \"議題1\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "transform_expected_qas_data",
+          "method_name": "transform_expected_qas_data",
+          "method_detail": {
+            "description": "この関数は、期待されるQAデータ（質問・回答のリスト）をカテゴリごとにグループ化し、辞書形式で返します。入力は、各要素が'category'、'question'、'answer'を持つ辞書のリストです。関数は各カテゴリごとに質問・回答ペアをまとめ、カテゴリ名をキー、質問・回答ペアのリストを値とする辞書を生成します。主にQAデータの整理や表示のために利用されます。呼び出しは、カテゴリ分けされたQAデータが必要な場面で行います。エッジケースとして、入力リストが空の場合は空の辞書を返します。また、同じカテゴリが複数回現れる場合は、そのカテゴリのリストに順次追加されます。'category'、'question'、'answer'のいずれかが欠けている場合はKeyError例外が発生します。",
+            "params": "  - oringinal_data: List[Dict[str, str]]",
+            "returns": "カテゴリごとに質問と回答をまとめた辞書。キーはカテゴリ名（str）、値は質問・回答のペア（Dict[str, str]）のリスト。例: {'技術': [{'question': 'APIの認証方法は？', 'answer': 'OAuth2を使用します。'}], '運用': [{'question': 'バックアップの頻度は？', 'answer': '毎日実施しています。'}]}",
+            "params_example": "  例:\n```python\n[\n    {\n        \"category\": \"技術\",\n        \"question\": \"APIの認証方法は？\",\n        \"answer\": \"OAuth2を使用します。\"\n    },\n    {\n        \"category\": \"運用\",\n        \"question\": \"バックアップの頻度は？\",\n        \"answer\": \"毎日実施しています。\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "load_existing_data",
+          "method_name": "load_existing_data",
+          "method_detail": {
+            "description": "load_existing_data関数は、指定されたファイルパスにJSONファイルが存在する場合、その内容をList[Dict]型として読み込んで返します。ファイルが存在しない場合は空のリスト([])を返します。主に既存の議事録やQAデータなど、ファイルIDやファイル名の管理情報を取得するために利用されます。関数は直接呼び出すことで利用でき、ファイルの存在チェックとJSONデータの読み込みを自動的に行います。エッジケースとして、ファイルが存在しない場合は例外を発生させず、空リストを返すため、呼び出し元で存在チェックを個別に行う必要はありません。ただし、ファイルが存在してもJSONの内容が不正な場合は例外が発生します。",
+            "params": "  - path: str",
+            "returns": "ファイルが存在し、正常に読み込めた場合はList[Dict]型のデータを返します。例: [{\"file_id\": \"abc123\", \"filename\": \"minutes_20240601.json\"}, {\"file_id\": \"def456\", \"filename\": \"minutes_20240602.json\"}]。ファイルが存在しない場合は空のリスト([])を返します。",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "generate_file_id",
+          "method_name": "generate_file_id",
+          "method_detail": {
+            "description": "この関数は、既存のファイル情報リスト（existing_data）を受け取り、最新のファイルIDをもとに次の連番ファイルID（'FILE001', 'FILE002', ...）を生成して返します。主に新しい議事録やQAデータの保存時に一意なIDを割り当てる目的で使用されます。呼び出しは他の関数やAPIエンドポイントから行われ、existing_dataには過去に保存されたファイル情報が格納されています。existing_dataが空の場合は 'FILE001' を返します。既存データがある場合は、最後の要素の 'file_id' から数字部分を抽出し、1増やして新しいIDを生成します。IDは常に 'FILE' + 3桁の数字（ゼロ埋め）で返されます。existing_dataの形式が正しくない場合や 'file_id' キーが存在しない場合は例外が発生します。",
+            "params": "  - existing_data: List[Dict[str, Any]]",
+            "returns": "新しく生成されたファイルID（例: 'FILE002'）。",
+            "params_example": "  例:\n```python\n[\n    {\n        \"file_id\": \"FILE001\",\n        \"filename\": \"minutes.docx\"\n    },\n    {\n        \"file_id\": \"FILE002\",\n        \"filename\": \"agenda.pdf\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "check_access_privileges",
+          "method_name": "check_access_privileges",
+          "method_detail": {
+            "description": "このミドルウェアは、FastAPIアプリケーションの全てのHTTPリクエストに対してアクセス権限を検証します。REQUIRE_LOGIN環境変数が'1'の場合、認証が必要となり、クッキーから'session_id'を取得してsession_manager.is_verifiedで認証状態を確認します。未認証の場合は'/login'ページへリダイレクトし、元のアクセス先URLを'pre_login_url'クッキーに保存します。session_idが無効な場合はクッキーを削除します。'/login'や'/favicon.ico'へのアクセスは常に許可されます。認証済みまたは認証不要の場合は、通常通りリクエストを処理し、'pre_login_url'クッキーを削除します。エッジケースとして、REQUIRE_LOGINが'0'で'/login'にアクセスした場合はトップページへリダイレクトされます。認証状態やクッキーの有無によって挙動が変化します。",
+            "params": "  - request: Request\n  - call_next: Callable",
+            "returns": "リダイレクトレスポンスまたは通常のレスポンスオブジェクト。例: ログインが必要な場合はRedirectResponse(url='/login', status_code=303)、認証済みの場合は通常のResponse。",
+            "params_example": "  例:\n```python\n{\n    \"url\": {\n        \"path\": \"/login\"\n    },\n    \"cookies\": {\n        \"session_id\": \"abc123\"\n    }\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "get_menu",
+          "method_name": "get_menu",
+          "method_detail": {
+            "description": "このメソッドはFastAPIのGETエンドポイント（/login）として定義されており、ユーザーが/loginにアクセスした際にログイン画面（login.html）を表示する役割を持つ。引数としてFastAPIのRequestオブジェクトを受け取り、Jinja2TemplatesのTemplateResponseを返す。contextにはリクエスト情報（request: req）が渡されるため、テンプレート内でリクエスト情報を参照できる。エッジケースとして、テンプレートファイル（login.html）が存在しない場合は500エラーが発生する可能性があるが、通常は例外処理は行われていない。リクエストパラメータや認証情報はこのメソッドでは扱わないため、単純な画面表示のみを行う。",
+            "params": "  - req: Request",
+            "returns": "Jinja2TemplatesのTemplateResponseオブジェクト。HTMLテンプレート（login.html）がレンダリングされ、リクエスト情報をcontextとして渡す。例：ユーザーがログインページにアクセスした際、login.htmlが表示される。",
+            "params_example": "  例:\n```python\n{\n    \"headers\": {\n        \"user-agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36\",\n        \"accept\": \"application/json\",\n        \"cookie\": \"sessionid=abc123; theme=dark\"\n    },\n    \"cookies\": {\n        \"sessionid\": \"abc123\",\n        \"theme\": \"dark\"\n    }\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "get_take_minutes",
+          "method_name": "get_take_minutes",
+          "method_detail": {
+            "description": "このメソッドは、FastAPIのGETリクエスト（/meeting-minutes）に対応するエンドポイントです。議事録ファイルのIDとファイル名の一覧を取得し、take_minutes.htmlテンプレートに渡して表示します。まず、議事録ファイルIDを保存するJSONファイルのディレクトリが存在しない場合は作成します。次に、file_id.jsonファイルが存在しない場合は空の辞書を作成して保存します。その後、file_id.jsonファイルを読み込み、file_idとファイル名の辞書を取得します。取得したデータはテンプレートのcontextとして渡され、HTMLページ上でファイル一覧が表示されます。エッジケースとして、file_id.jsonが存在しない場合でも自動的に空ファイルが作成されるため、例外は発生しません。ファイルの読み書きに失敗した場合は、サーバー側で例外が発生する可能性がありますが、通常の運用では安全に動作します。",
+            "params": "  - req: Request",
+            "returns": "take_minutes.htmlテンプレートをレンダリングしたTemplateResponseオブジェクト。contextには、リクエスト情報と、file_idとファイル名の辞書（例：{\"abc123\": \"議事録2024年6月.docx\", \"def456\": \"議事録2024年5月.docx\"}）が含まれる。",
+            "params_example": "  例:\n```python\n{\n    \"headers\": {\n        \"user-agent\": \"Mozilla/5.0\",\n        \"accept\": \"application/json\"\n    },\n    \"session\": {\n        \"user_id\": 123,\n        \"authenticated\": true\n    }\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "fetch_expected_qa_list",
+          "method_name": "fetch_expected_qa_list",
+          "method_detail": {
+            "description": "このメソッドは、FastAPIのGETエンドポイント '/expected-QA' に対応しており、期待されるQAリストのファイルIDとファイル名を取得してHTMLテンプレートに渡します。まず、QASファイルID情報を保存するディレクトリが存在しない場合は作成し、ファイルID情報のJSONファイルが存在しない場合は空の辞書として初期化します。その後、JSONファイルからファイルIDとファイル名の辞書を読み込み、'expected_QA.html' テンプレートにリクエスト情報とともに渡してレンダリングします。エッジケースとして、ディレクトリやファイルが存在しない場合でも自動的に作成・初期化されるため、例外は発生しません。ファイルID情報が空の場合は、空のリストがテンプレートに渡されます。",
+            "params": "  - req: Request",
+            "returns": "expected_QA.htmlテンプレートをレンダリングしたTemplateResponseオブジェクト。contextには、リクエスト情報と、QASファイルIDとファイル名の辞書（例：{\"abc123\": \"2024年度QAリスト.docx\", \"def456\": \"2023年度QAリスト.docx\"}）が含まれる。",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "get_meeting_summary",
+          "method_name": "get_meeting_summary",
+          "method_detail": {
+            "description": "このメソッドは、FastAPIのPOSTエンドポイント（/meeting-minutes/generated-content）として定義されており、会議議事録ファイル（meeting_file）を受け取り、その内容を解析・保存し、結果をHTMLテンプレートで返します。主な処理は以下の通りです：\n1. ファイルがアップロードされていない場合は400エラーを返します。\n2. ファイル名と新規ファイルID、作成日時をJSONファイル（file_id.json）に保存します。\n3. ファイルを指定ディレクトリ（/storage/file_data/gijiroku/新規ID/）に保存します。\n4. ファイル内容をextract_comments_and_qa.create_gijiroku_dataで解析し、コメントとQAデータを抽出します。\n5. 抽出したデータをcomments_and_qa.jsonとして保存します。\n6. コメントデータをtransform_comment_dataで変換し、HTMLテンプレート（meeting_summary_result.html）にレンダリングして返します。\n\nエッジケース：\n- ファイルが空の場合はエラーを返します。\n- ファイル保存時に例外が発生した場合はエラーメッセージを記録しますが、処理は継続します。\n- ディレクトリが存在しない場合は自動作成します。\n\nこのAPIは、議事録ファイルのアップロードから解析・保存・表示までを一括で行うため、会議管理システムなどで利用されます。",
+            "params": "  - req: Request\n  - meeting_file: UploadFile",
+            "returns": "HTMLテンプレート（meeting_summary_result.html）をレンダリングしたTemplateResponseオブジェクト。contextには変換済みコメント、QAリスト、ファイルID、ファイル名などが含まれます。例：context={\"comments\": [\"議事録コメント1\", \"議事録コメント2\"], \"QAs\": [{\"question\": \"Q1\", \"answer\": \"A1\"}], \"file_id\": \"abc123\", \"file_name\": \"2024-06-01_meeting.txt\"}",
+            "params_example": "  例:\n```python\n{\n    \"request\": {\n        \"session\": {\n            \"user_id\": \"12345\",\n            \"authenticated\": true\n        },\n        \"headers\": {\n            \"content-type\": \"multipart/form-data\"\n        }\n    },\n    \"meeting_file\": {\n        \"filename\": \"2024-06-01_meeting.txt\",\n        \"content\": \"議事録の内容がここに入ります。\"\n    }\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "get_meeting_summary_result",
+          "method_name": "get_meeting_summary_result",
+          "method_detail": {
+            "description": "このメソッドは、GETリクエストで'/meeting-minutes/generated-content/{file_id}'にアクセスされた際に呼び出されます。file_idで指定された議事録ファイルのコメントとQAデータを取得し、HTMLテンプレート（meeting_summary_result.html）として返します。まず、FILEID_JSON_FILE_PATHからfile_idとファイル名の対応表を読み込み、file_idに一致するファイル情報を検索します。該当ファイルが存在すれば、GIJIROKU_FOLDER配下のfile_idディレクトリ内のcomments_and_qa.jsonを読み込み、commentsとQAsデータを取得します。commentsはtransform_comment_data関数で整形され、QAsはそのままテンプレートに渡されます。ファイルが存在しない場合やJSONが不正な場合は、エラーメッセージをJSON形式で返します。file_idが不正な場合も同様にエラーを返します。エッジケースとして、file_idが存在しない、ファイルが削除されている、JSONが壊れている場合にそれぞれ適切なエラーを返します。",
+            "params": "  - req: Request\n  - file_id: str",
+            "returns": "議事録のコメントとQAデータを含むHTMLテンプレートのレスポンス、またはエラー時はJSON形式のエラーメッセージ。例：正常時はmeeting_summary_result.htmlがレンダリングされ、contextに{'comments': [...], 'QAs': [...], 'file_id': '20240601_001', 'file_name': '議事録20240601.docx'}などが含まれる。エラー時は{'error': 'File not found: 議事録20240601.docx'}や{'error': 'Invalid JSON in file: 議事録20240601.docx'}のようなJSONが返る。",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "get_expected_QA",
+          "method_name": "get_expected_QA",
+          "method_detail": {
+            "description": "このメソッドは、FastAPIのPOSTエンドポイント '/expected-QA/generated-content' に紐づいており、ユーザーが説明資料ファイル（複数可）をアップロードすると、そのファイルをサーバー上に保存し、ファイル名・ファイルID・作成日時をJSONファイルに記録します。保存したファイルごとにexpected_QA.create_qa関数でQAデータを生成し、expected_QA.qa_mergeで統合します。統合したQAデータはexpected_qas.jsonとして保存され、transform_expected_qas_dataでテンプレート用に整形されます。最終的にexpected_QA_result.htmlテンプレートをレンダリングして返します。ファイルがアップロードされていない場合は400エラーを返します。ファイル保存時に例外が発生した場合はエラーメッセージを出力しますが、処理は継続します。エッジケースとして、アップロードファイルが空の場合はエラー、ファイル保存時のディレクトリ作成やファイル書き込み失敗時は例外処理が行われます。",
+            "params": "  - req: Request\n  - explanation_materials: List[UploadFile]",
+            "returns": "HTMLテンプレートによるレスポンス。内容はexpected_QA_result.htmlがレンダリングされ、contextには変換済みのQAデータ（expected_qas）、新規ファイルID（file_id）、ファイル名（file_name）が含まれる。例: TemplateResponse(name='expected_QA_result.html', context={'request': req, 'expected_qas': [...], 'file_id': 'abc123', 'file_name': '資料1.pdf,資料2.docx'})",
+            "params_example": "  例:\n```python\n[\n    {\n        \"filename\": \"資料1.pdf\"\n    },\n    {\n        \"filename\": \"資料2.docx\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "get_expected_QA_result",
+          "method_name": "get_expected_QA_result",
+          "method_detail": {
+            "description": "このメソッドは、FastAPIのGETエンドポイント '/expected-QA/generated-content/{file_id}' に対応し、指定されたfile_idに紐づくQA作成結果（expected_qas.json）をHTMLテンプレートで表示します。まず、QAS_FILEID_JSON_FILE_PATHからfile_idとファイル名の一覧を読み込み、file_idに一致するファイル情報を検索します。該当ファイルが存在すれば、QAS_FOLDER配下のexpected_qas.jsonを読み込み、transform_expected_qas_data関数でデータを整形し、テンプレート 'expected_QA_result.html' にレンダリングして返します。ファイルが存在しない場合やJSONが不正な場合は、エラーメッセージを辞書型で返します。file_idが不正な場合も同様にエラーを返します。エッジケースとして、ファイルが見つからない場合、JSONが壊れている場合、file_idが存在しない場合にそれぞれ適切なエラーを返します。",
+            "params": "  - req: Request\n  - file_id: str",
+            "returns": "正常時はTemplateResponse（HTMLレンダリング結果）を返す。ファイルが存在しない場合やJSONが不正な場合は、Dict[str, str]型のエラーメッセージを返す。例：{\"error\": \"File not found: QA資料.docx\"} または {\"error\": \"Invalid JSON in file: QA資料.docx\"}",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "download_task_file",
+          "method_name": "download_task_file",
+          "method_detail": {
+            "description": "このメソッドは、GETリクエストで '/api/v1/download/{task}/{file_id}' にアクセスされた際に呼び出されます。taskパラメータで議事録（GIJIROKU）かQA（QAS）かを指定し、file_idでダウンロードしたいファイルのIDを指定します。まず、対応するJSONファイルからfile_idに一致するファイル情報を検索します。該当ファイルが存在しない場合は404エラーを返します。ファイルが存在する場合は、保存ディレクトリから該当データ（comments_and_qa.jsonまたはexpected_qas.json）を読み込み、GijirokuDataまたはExpectedQADataオブジェクトに変換します。その後、convert_to_docx_data関数でWordまたはExcel形式のバイトデータに変換し、適切なMIMEタイプでレスポンスとして返却します。エッジケースとして、file_idが存在しない場合は404エラー、ファイルデータの読み込み失敗時は例外が発生します。",
+            "params": "  - req: Request\n  - task: IRToolTask\n  - file_id: str",
+            "returns": "ダウンロード対象のファイルデータをバイト列として返却し、適切なMIMEタイプ（議事録の場合はWord、QAの場合はExcel）でレスポンスを返す。例: Response(doc_file_bytes, media_type=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document\")",
+            "params_example": "  例:\n```python\n[\n    \"IRToolTask.GIJIROKU\",\n    \"20240601_001\"\n]\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "post_login",
+          "method_name": "post_login",
+          "method_detail": {
+            "description": "このメソッドはFastAPIのPOSTエンドポイント'/login'として定義されており、ログインフォームから送信されたユーザー名とパスワードを受け取ります。session_manager.login(username, password)で認証を行い、成功した場合は事前ログインURL（クッキーから取得、なければ'/'）へ303リダイレクトし、セッションIDをクッキーにセットします。失敗した場合は、'login.html'テンプレートをエラーメッセージとともに返します。エッジケースとして、クッキーに'pre_login_url'が存在しない場合はデフォルトで'/'にリダイレクトされます。フォーム値が空の場合や認証失敗時は必ずエラーメッセージが表示されます。",
+            "params": "  - req: Request\n  - username: str\n  - password: str",
+            "returns": "ログイン成功時はRedirectResponseオブジェクト（例：status_code=303, url='/dashboard'）。失敗時はTemplateResponseオブジェクト（例：login.htmlテンプレート、エラーメッセージ付き）。",
+            "params_example": "",
+            "return_example": ""
+          }
+        }
+      ],
+      "session_manager.py": [
+        {
+          "method_id": "encrypt_bytes",
+          "method_name": "encrypt_bytes",
+          "method_detail": {
+            "description": "この関数は、raw_bytesで与えられたバイト列データを、pwで指定されたパスワードを用いてAES方式で暗号化します。暗号化処理にはpyAesCryptライブラリのencryptStream関数を利用しています。呼び出し時にパスワードが空文字列やNoneの場合はAssertionErrorが発生し、必ず有効なパスワードを指定する必要があります。暗号化後のデータはバイト列として返されるため、ファイル保存やネットワーク送信など様々な用途に利用できます。エッジケースとして、raw_bytesが空の場合でも、暗号化処理は正常に行われ、暗号化済みの空データが返されます。パスワードが不適切（空やNone）の場合は即座に例外が発生し、暗号化処理は行われません。",
+            "params": "  - raw_bytes: bytes\n  - pw: str",
+            "returns": "暗号化されたバイト列を返します。例えば、b'\\x00\\x01\\x02...\\xff' のような、元データとは異なるバイナリデータとなります。",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "decrypt_bytes",
+          "method_name": "decrypt_bytes",
+          "method_detail": {
+            "description": "この関数は、AES方式で暗号化されたバイト列（encrypted_bytes）を、指定されたパスワード（pw）を使って復号します。パスワードが空の場合はAssertionErrorを発生させます。復号処理にはpyAesCryptライブラリのdecryptStreamを利用し、復号結果はBytesIOストリームから取得して返します。主にファイルや通信データの復号に利用されます。パスワードが間違っている場合や暗号化データが不正な場合は例外が発生します。関数は直接呼び出して利用します。",
+            "params": "  - encrypted_bytes: bytes\n  - pw: str",
+            "returns": "復号されたバイト列。例: b'{\"access_key\": \"AKIA...\", \"secret_key\": \"abcd...\"}'",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "encrypt_access_info",
+          "method_name": "encrypt_access_info",
+          "method_detail": {
+            "description": "この関数は、アクセス情報が記載されたファイル（access_info_file）をバイナリモードで読み込み、その内容を環境変数ENCRYPTION_KEYで取得したパスワードを使って暗号化します。暗号化処理はencrypt_bytes関数に委譲され、暗号化されたバイト列はoutput_pathで指定されたファイルにバイナリモードで書き込まれます。主にコマンドラインから呼び出され、ファイルの安全な保存や転送を目的としています。ファイルが存在しない場合や環境変数が未設定の場合、例外が発生します。ファイルサイズが大きい場合でも全体をメモリに読み込むため、メモリ不足のリスクがあります。空ファイルの場合は空の暗号化データが出力されます。",
+            "params": "  - access_info_file: str\n  - output_path: str",
+            "returns": "なし",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "check_access_info",
+          "method_name": "check_access_info",
+          "method_detail": {
+            "description": "check_access_info関数は、環境変数で指定された暗号化済みのアクセス情報ファイルを復号し、JSON形式でユーザー情報を取得します。引数として渡されたusernameがファイル内に存在し、かつpasswordが一致する場合、ユーザー名とそのユーザーに紐づく追加情報（dataフィールド）を辞書型で返します。認証に失敗した場合（ユーザーが存在しない、またはパスワードが一致しない場合）はNoneを返します。ファイルの復号には別途decrypt_bytes関数を利用します。エッジケースとして、環境変数が未設定の場合や暗号化キーが短すぎる場合、ファイルが存在しない場合、JSONのパースに失敗した場合などは例外が発生します。",
+            "params": "  - username: str\n  - password: str",
+            "returns": "認証が成功した場合は、ユーザー名とユーザー情報を含む辞書を返します。例: {\"username\": \"alice\", \"email\": \"alice@example.com\", \"role\": \"admin\"}。認証に失敗した場合は None を返します。",
+            "params_example": "",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/classify_ir_meeting_speakers.py": [
+        {
+          "method_id": "extract_speakers",
+          "method_name": "extract_speakers",
+          "method_detail": {
+            "description": "この関数は、IR（投資家向け広報）ミーティングの文字起こしデータ（transcribed_meeting）を受け取り、各話者の発言をまとめた上で、話者がIRチームのメンバーか投資家かを分類します。まず、各発話情報から話者IDと発話内容を抽出し、話者ごとに発話を連結します。その後、AzureOpenAILLMクラスを用いてOpenAI GPT-4モデルに分類タスクを依頼します。プロンプトにはIR会議の文脈や分類ルールを明示し、話者ごとの発話を最大1000文字までまとめて送信します。モデルの応答はJSON形式で返され、各話者IDに対して\"Investor\"または\"IR\"の分類結果が格納されます。\n\nエッジケースとして、発話情報に'SpeakerId'や'speaker'が存在しない場合はKeyErrorが発生します。また、発話内容が空の場合や話者IDが重複している場合でも、発話は連結されて処理されます。APIキーやURL、モデル名が環境変数に存在しない場合は、os.environからのKeyErrorが発生します。OpenAI APIの応答が不正な場合や通信エラーが発生した場合は、llm.process_dataやresponse.json()で例外が発生する可能性があります。",
+            "params": "  - transcribed_meeting: List[Dict[str, Any]]",
+            "returns": "{\n    \"Speaker-1\": \"Investor\",\n    \"Speaker-2\": \"IR\",\n    \"Speaker-3\": \"Investor\"\n}",
+            "params_example": "  例:\n```python\n[\n    {\n        \"SpeakerId\": \"Speaker-1\",\n        \"DisplayText\": \"こんにちは。\"\n    },\n    {\n        \"speaker\": \"Speaker-2\",\n        \"text\": \"ご質問ありがとうございます。\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/extract_comments_and_qa.py": [
+        {
+          "method_id": "is_qa_relevent",
+          "method_name": "is_qa_relevent",
+          "method_detail": {
+            "description": "is_qa_relevent関数は、Q&Aペア（辞書型）を受け取り、そのペアが関連性のある内容かどうかを判定します。判定基準は、\"question_report\"と\"answer_report\"の両方が空でなく、かつ\"topic\"がextract_qa_topic.IRRELEVENT_TOPICでない場合にTrueを返します。主にIR説明会などの議事録生成やQ&A抽出処理の中で、関連性のあるQ&Aのみをフィルタリングする目的で利用されます。呼び出しは is_qa_relevent(qa_pair) のように行い、qa_pairは必須キーを含む辞書である必要があります。エッジケースとして、qa_pairに必須キーが存在しない場合や、値がNoneの場合はKeyErrorやTypeErrorが発生します。また、\"topic\"がextract_qa_topic.IRRELEVENT_TOPICと一致する場合はFalseとなります。",
+            "params": "  - qa_pair: Dict[str, Any]",
+            "returns": "Q&Aペアが関連性がある場合はTrue、関連性がない場合はFalseを返します。例えば、{ \"question_report\": \"今期の売上予想は？\", \"answer_report\": \"売上は前年比10%増を見込んでいます。\", \"topic\": \"業績見通し\" } の場合はTrue、{ \"question_report\": \"\", \"answer_report\": \"\", \"topic\": \"IRRELEVENT_TOPIC\" } の場合はFalse。",
+            "params_example": "  例:\n```python\n{\n    \"question_report\": \"今期の売上予想は？\",\n    \"answer_report\": \"売上は前年比10%増を見込んでいます。\",\n    \"topic\": \"業績見通し\"\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "transcribe_audio_cloud",
+          "method_name": "transcribe_audio_cloud",
+          "method_detail": {
+            "description": "transcribe_audio_cloudは、動画または音声ファイル（主に.wav以外の動画ファイルも含む）から音声トラックを抽出し、その音声をAzure Speechサービスを使って文字起こしします。ファイルパスが.wav拡張子でない場合は、まず動画ファイルから.wav形式の音声トラックを抽出します（transcribe_with_azure_speech.extract_audio_trackを利用）。その後、抽出した.wavファイルをAzure Speechサービスに渡して文字起こしを行い、テキストとして返します。直接.wavファイルが指定された場合は抽出処理を省略し、そのまま文字起こしを行います。\n\nエッジケースとして、指定されたファイルが存在しない場合や、動画ファイルから音声抽出に失敗した場合、またはAzure Speechサービスが音声認識に失敗した場合は例外が発生します。文字起こし結果が空文字列になる場合もあり得ます。\n\nこの関数は、議事録作成や会議内容のテキスト化など、音声データの自動文字起こしが必要な場面で利用されます。呼び出しは transcribe_audio_cloud('ファイルパス') のように行います。",
+            "params": "  - video_file_path: str",
+            "returns": "音声ファイルから抽出された文字起こしテキスト。例: '本日の会議を開始します。最初の議題は売上報告です。...'",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "create_gijiroku_data",
+          "method_name": "create_gijiroku_data",
+          "method_detail": {
+            "description": "create_gijiroku_dataは、指定された音声または動画ファイルのパスを受け取り、その内容をテキストに変換し、発言者の識別・修正・コメント抽出・QAペア抽出・トピック分類・レポート形式への変換を順次行い、最終的にコメントとQAペアを含む議事録データの辞書を返します。主な処理の流れは、1) 音声認識によるテキスト化、2) 発言者の分類、3) 発言者IDの修正、4) コメント抽出、5) QAペア抽出、6) QAトピック分類、7) レポート形式への変換です。呼び出しは video_file_path（str型）を引数にして行います。エッジケースとして、音声ファイルが存在しない場合や認識できない場合は例外が発生します。また、発言者が正しく分類できない場合や、QAペアが抽出できない場合は空リストや空辞書が返されることがあります。",
+            "params": "  - video_file_path: str",
+            "returns": "議事録データを格納した辞書を返します。例: {\"comments\": [\"発言者A: 本日の議題について説明します。\", \"発言者B: 質問があります。\"], \"QAs\": [{\"topic\": \"議題説明\", \"question\": \"発言者B: 質問があります。\", \"answer\": \"発言者A: 詳細は...\"}]}。commentsはList[str]型、QAsはList[Dict[str, str]]型です。",
+            "params_example": "",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/extract_qa_topic.py": [
+        {
+          "method_id": "identify_topics_in_qa_pairs",
+          "method_name": "identify_topics_in_qa_pairs",
+          "method_detail": {
+            "description": "この関数は、IR（投資家向け広報）チームと投資家の間で行われたQAペア（質問と回答のセット）のリストを受け取り、それぞれのQAペアについて主題（トピック）を抽出します。抽出には大規模言語モデル（AzureOpenAILLM）を利用し、システムプロンプトとユーザープロンプトを組み合わせて、各QAペアの内容からIR視点で重要なトピックを日本語で生成します。もしQAペアがIRにとって無関係な内容であれば、'__not_relevant__'というトピックが付与されます。関数は、各QAペアの辞書に'topic'キーを追加したリストを返します。\n\n主な利用方法は、IRミーティングの議事録やQA記録から、投資家が関心を持つ主題を自動的に分類・整理したい場合です。\n\nエッジケースとして、'question'や'answer'キーが欠落している場合や、値が空文字の場合、llm.process_dataの呼び出しでエラーが発生する可能性があります。また、API通信エラーやトークン制限超過など、外部サービス依存の例外も考えられます。\n\n関数は、最初のQAペアのレスポンスからトークン使用量を集計し、以降のペアでも合算しますが、返り値には含まれません。",
+            "params": "  - qa_json: List[Dict[str, str]]",
+            "returns": "各QAペアに'topic'キーが追加されたリスト。例: [{\"question\": \"今期の業績見通しは？\", \"answer\": \"売上は前年比10%増を見込んでいます。\", \"topic\": \"業績見通し\"}, {\"question\": \"新製品の発売予定は？\", \"answer\": \"来月を予定しています。\", \"topic\": \"新製品\"}]",
+            "params_example": "  例:\n```python\n[\n    {\n        \"question\": \"今期の業績見通しは？\",\n        \"answer\": \"売上は前年比10%増を見込んでいます。\"\n    },\n    {\n        \"question\": \"新製品の発売予定は？\",\n        \"answer\": \"来月を予定しています。\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/ir_extract_comments.py": [
+        {
+          "method_id": "extract_comments",
+          "method_name": "extract_comments",
+          "method_detail": {
+            "description": "この関数は、IRミーティングの逐語録データ（transcribed_meeting）と話者分類情報（speaker_classes）を受け取り、投資家によるコメントやフィードバックを抽出・分類し、構造化されたリストとして返す。まず、逐語録データから発言者ごとに発言をまとめ、IR担当者と投資家の発言を区別する。40発言ごとに分割し、LLM（大規模言語モデル）を用いてコメント抽出・分類を行う。抽出結果は、コメントのトピック、クラス（positive_comment, negative_comment, feedback）、カテゴリ（performance_and_outlook等）、内容を含む辞書のリストとして返される。LLMの応答がJSONとしてパースできない場合は最大3回までリトライし、失敗時は例外を出力して処理を中断する。入力データに必須キーが欠落している場合や、LLM応答が不正な場合は例外が発生する可能性がある。",
+            "params": "  - transcribed_meeting: List[dict]\n  - speaker_classes: dict",
+            "returns": "抽出されたコメント情報のリスト。各要素は辞書で、例: {\"topic\": \"業績見通し\", \"class\": \"positive_comment\", \"category\": \"performance_and_outlook\", \"content\": \"2024年度の売上成長率が業界平均を上回っている点が評価できる。\"}。",
+            "params_example": "  例:\n```python\n[\n    [\n        {\n            \"SpeakerId\": \"A\",\n            \"DisplayText\": \"御社の業績について質問があります。\"\n        },\n        {\n            \"speaker\": \"B\",\n            \"text\": \"今後の戦略についてコメントします。\"\n        }\n    ],\n    {\n        \"A\": \"IR\",\n        \"B\": \"Investor\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/ir_fix_speaker_id_issues.py": [
+        {
+          "method_id": "fix_conv_format",
+          "method_name": "fix_conv_format",
+          "method_detail": {
+            "description": "fix_conv_format関数は、IRミーティングなどの逐語録データ（transcribed_meeting）を受け取り、話者IDと発話内容を正規化・統合した上で、AI（大規模言語モデル）を用いて誤認識や誤分割、誤った句読点などを修正した会話データを返します。まず、入力データから話者IDと発話内容を抽出し、同じ話者が連続している場合は発話を結合します。その後、20件ごとに分割してAIに修正を依頼し、修正結果をまとめて返します。AIへのリクエストは最大3回までリトライし、JSONデコードエラーが発生した場合はリトライします。リトライ上限に達した場合はその時点で処理を中断します。主に自動音声認識の誤りや話者分割のミスを修正する用途で利用されます。エッジケースとして、話者IDや発話内容のキーが異なる場合（'SpeakerId'/'speaker', 'DisplayText'/'text'）にも対応しています。また、AI応答が不正なJSONの場合は最大3回までリトライしますが、それでも失敗した場合はその時点までの結果のみ返します。",
+            "params": "  - transcribed_meeting: List[dict]\n  - speaker_classes: Dict[str, str]",
+            "returns": "修正済み会話データのリスト。各要素は辞書で、'speaker'（話者クラス名）と'content'（修正済み発話内容）を持つ。例: [{\"speaker\": \"Investor\", \"content\": \"昨年の売上はどのくらい伸びましたか？\"}, {\"speaker\": \"IR\", \"content\": \"売上は25%増加しました。\"}]",
+            "params_example": "  例:\n```python\n[\n    [\n        {\n            \"SpeakerId\": \"1\",\n            \"DisplayText\": \"昨年の売上は\"\n        },\n        {\n            \"SpeakerId\": \"2\",\n            \"DisplayText\": \"どのくらい伸びましたか？\"\n        }\n    ],\n    {\n        \"1\": \"Investor\",\n        \"2\": \"IR\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/ir_group_into_questions.py": [
+        {
+          "method_id": "extract_qa_pairs",
+          "method_name": "extract_qa_pairs",
+          "method_detail": {
+            "description": "この関数は、IRチームと投資家の会議の逐語録（発話ごとの情報リスト）から、発話者ごとに発話をまとめ、さらにOpenAIの大規模言語モデル（LLM）を用いてQ&Aペアを抽出します。発話者IDから役割（IR, Investorなど）を特定し、同じ発話者が連続する場合は発話を結合します。その後、20発話ごとにまとめてLLMに投げ、Q&AペアをJSON形式で抽出します。最初のバッチと2回目以降のバッチでプロンプトを切り替え、前回の最後のQ&Aペアを引き継ぐことで、会話の文脈を維持します。LLMからの応答がJSONとしてパースできない場合は最大3回までリトライし、それでも失敗した場合は処理を中断します。返り値は抽出されたQ&Aペアのリストです。\n\nエッジケースとして、発話情報に必要なキーが存在しない場合は代替キーを参照し、どれもなければ'Unknown'として扱います。また、会話の途中で切れていても、部分的なQ&Aペアを返します。LLMの応答が不正な場合やAPI通信エラーが発生した場合は、例外が発生し、トレースバックが出力されます。",
+            "params": "  - transcribed_meeting: List[Dict[str, Any]]\n  - speaker_classes: Dict[str, str]",
+            "returns": "会話から抽出されたQ&Aペアのリスト。各要素は、'question'（質問文）と'answer'（回答文）を持つ辞書です。例: [{\"question\": \"Investor: 昨年の売上はどのくらい伸びましたか？\", \"answer\": \"IR: 売上は25%増加しました。\"}, {\"question\": \"Investor: 来年の見込みはどうですか？\", \"answer\": \"IR: 来年の見込みとしては、20%の増加を目指しています。\"}]",
+            "params_example": "  例:\n```python\n[\n    [\n        {\n            \"SpeakerId\": \"S1\",\n            \"DisplayText\": \"昨年の売上はどのくらい伸びましたか？\"\n        },\n        {\n            \"SpeakerId\": \"S2\",\n            \"DisplayText\": \"売上は25%増加しました。\"\n        }\n    ],\n    {\n        \"S1\": \"Investor\",\n        \"S2\": \"IR\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/qa_spoken_to_report.py": [
+        {
+          "method_id": "transform_qa_to_report",
+          "method_name": "transform_qa_to_report",
+          "method_detail": {
+            "description": "この関数は、IR担当者と投資家の間で行われた質疑応答ペア（'question', 'answer'）のリストを受け取り、各ペアをAI（AzureOpenAILLM）によりレポート形式（'question_report', 'answer_report'）に変換します。各ペアごとに、質問と回答を所定のプロンプトに埋め込み、AIモデルに送信して要約・整形された結果を取得します。その結果を元のペアにマージし、全てのペアについて処理したリストを返します。入力リストが空の場合は空リストを返します。AI応答が不正な場合やネットワーク障害等が発生した場合は例外が発生します。通常は、各ペアに対しAIが日本語でレポート形式の要約を返します。",
+            "params": "  - qa_json: List[Dict[str, str]]",
+            "returns": "各質疑応答ペアに対し、元の内容に加えて、AIによるレポート形式の要約（'question_report', 'answer_report'）を追加した辞書のリスト。例: [{'question': '昨年の売上はどのくらい伸びましたか？', 'answer': '当社の売上は25%増加しました。', 'question_report': '昨年の売上はどのくらい伸びましたか？', 'answer_report': ['売上は25%増加しました。']}]",
+            "params_example": "  例:\n```python\n[\n    {\n        \"question\": \"昨年の売上はどのくらい伸びましたか？\",\n        \"answer\": \"当社の売上は25%増加しました。\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        }
+      ],
+      "minutesgen/transcribe_with_azure_speech.py": [
+        {
+          "method_id": "convert_format",
+          "method_name": "convert_format",
+          "method_detail": {
+            "description": "この関数は、会話の単語ごとの発話データ（'word_segments'）を受け取り、同じ発話者が連続して話した内容を一つのテキストとしてまとめます。各単語データには'speaker'（発話者）と'word'（単語）が含まれます。発話者が変わるたびに、直前までの発話者のテキストをまとめて出力リストに追加します。最後の発話者のテキストも忘れずに追加します。発話者情報が欠落している場合は直前の発話者を引き継ぎます。主に会話の書き起こしデータを発話者ごとに整理する用途で利用されます。エッジケースとして、'word_segments'が空の場合は空リストを返します。発話者情報が最初からない場合はNoneとして扱われます。",
+            "params": "  - in_format_data: Dict[str, List[Dict[str, Any]]]",
+            "returns": "発話者ごとに発話内容をまとめたリスト。各要素は{'speaker': 'A', 'text': 'こんにちは、'}のような辞書。例: [{'speaker': 'A', 'text': 'こんにちは、'}, {'speaker': 'B', 'text': 'よろしくお願いします'}]",
+            "params_example": "  例:\n```python\n{\n    \"word_segments\": [\n        {\n            \"speaker\": \"A\",\n            \"word\": \"こんにちは\"\n        },\n        {\n            \"speaker\": \"A\",\n            \"word\": \"、\"\n        },\n        {\n            \"speaker\": \"B\",\n            \"word\": \"よろしくお願いします\"\n        }\n    ]\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "clean_up",
+          "method_name": "clean_up",
+          "method_detail": {
+            "description": "この関数は、dirty_data（会話データのリスト）を受け取り、話者が連続している場合や発言内容が5文字未満の場合に、前の発言と結合してクリーンな会話データを生成します。最初のデータはそのまま追加されますが、以降のデータは、直前の話者と同じ場合、または発言内容が短い場合（5文字未満）には、直前の発言内容にテキストを追加します。そうでない場合は新しい発言として追加します。主に音声認識や会話記録の後処理で、発言の分割やノイズを除去する目的で利用されます。エッジケースとして、空リストが渡された場合は空リストを返します。また、各要素が'speaker'と'text'キーを持たない場合は例外が発生します。",
+            "params": "  - dirty_data: List[Dict[str, str]]",
+            "returns": "クリーンアップされた会話データのリスト。各要素は辞書で、'speaker'（話者名）と'text'（発言内容）が含まれます。例: [{'speaker': 'IR担当者', 'text': '本日はよろしくお願いします。'}, {'speaker': '投資家', 'text': '御社の業績について教えてください。'}]",
+            "params_example": "  例:\n```python\n[\n    {\n        \"speaker\": \"IR担当者\",\n        \"text\": \"本日はよろしくお願いします。\"\n    },\n    {\n        \"speaker\": \"投資家\",\n        \"text\": \"御社の業績について教えてください。\"\n    }\n]\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "extract_audio_track",
+          "method_name": "extract_audio_track",
+          "method_detail": {
+            "description": "この関数は、ffmpegコマンドラインツールを利用して、指定された動画ファイル（video_file_path）から音声トラックを抽出し、モノラル（1チャンネル）、16bit PCM（pcm_s16le）、サンプリングレート16kHzのWAV形式でoriginal_audio_pathに保存します。関数はPythonのsubprocess.callを用いて外部コマンドを実行します。呼び出し方法はextract_audio_track('/path/to/video.mp4', '/path/to/audio.wav')のように、動画ファイルのパスと保存先の音声ファイルのパスを指定して呼び出します。エッジケースとして、動画ファイルが存在しない場合や、ffmpegがインストールされていない場合、または保存先のディレクトリに書き込み権限がない場合は、ffmpegコマンドが失敗し、音声抽出が行われません。関数自体は例外をスローせず、ffmpegの実行結果に依存します。",
+            "params": "  - video_file_path: str\n  - original_audio_path: str",
+            "returns": "なし",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "health_check_local_server",
+          "method_name": "health_check_local_server",
+          "method_detail": {
+            "description": "この関数は、環境変数 'LOCAL_AI_SERVER_ADDRESS' で指定されたローカルAIサーバーのアドレスと、'LOCAL_AI_SERVER_PORT'（デフォルトは3101）で指定されたポートを用いて、サーバーのヘルスチェックAPI（/api/v1/health_check）にGETリクエストを送信します。リクエストには 'LOCAL_AI_SERVER_KEY' で取得した認証ヘッダーを付与します。サーバーアドレスが環境変数に設定されていない場合は即座にFalseを返します。APIのレスポンスステータスコードが200の場合のみTrueを返し、それ以外の場合はFalseとなります。エッジケースとして、サーバーがダウンしている、ネットワーク障害が発生している、認証キーが不正である場合などはFalseを返すか、例外が発生します。関数はパラメータを受け取らず、主にサーバーの稼働状況を確認する用途で利用されます。",
+            "params": "  なし",
+            "returns": "ローカルAIサーバーが正常に稼働している場合はTrue、そうでない場合はFalseを返します。例: True",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "speech_to_text_local_server",
+          "method_name": "speech_to_text_local_server",
+          "method_detail": {
+            "description": "この関数は、指定された音声ファイル（original_audio_path）をローカルAIサーバーに送信し、文字起こし処理を行います。話者分離（with_diarization）が有効な場合は、話者ごとにテキストが分離されます。プロンプト（prompt）はAIサーバーの認識精度向上のために利用されます。関数はまず音声ファイルをbase64エンコードし、POSTリクエストでサーバーに登録します。その後、定期的にGETリクエストで処理状態を確認し、完了したら結果を取得します。エラーが発生した場合はAiServerError例外を投げるか、AiServerErrorオブジェクトを返します。主なエッジケースとして、サーバーが見つからない場合、認識処理が失敗した場合、またはAPIレスポンスが異常な場合に例外が発生します。",
+            "params": "  - original_audio_path: str\n  - with_diarization: bool\n  - prompt: str",
+            "returns": "音声認識結果を含む辞書型データ。例: {\"transcript\": \"会社の業績について説明します。\", \"speakers\": [{\"id\": 1, \"text\": \"会社の業績について説明します。\"}, {\"id\": 2, \"text\": \"ありがとうございます。\"}], \"process_id\": \"abc123\", \"state\": \"finished\"}",
+            "params_example": "  例:\n```python\n{\n    \"audio_path\": \"/home/user/audio/meeting.wav\",\n    \"diarization\": true,\n    \"prompt\": \"下記は、IR担当者と投資家が会社について話し合う会議の会話です。\"\n}\n```\n",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "speech_to_text_azure",
+          "method_name": "speech_to_text_azure",
+          "method_detail": {
+            "description": "この関数は、original_audio_pathで指定された音声ファイルをAzure Cognitive Services Speech APIのConversationTranscriberを利用して日本語（ja-JP）で文字起こしします。APIキーとリージョンは環境変数（SPEECH_API_KEY, SPEECH_API_REGION）から取得します。話者識別（DifferentiateGuestSpeakers）を有効化しており、複数話者の会話にも対応します。音声認識の結果はJSON形式で受け取り、Pythonの辞書型に変換してリストに格納します。関数は非同期で認識を開始し、認識セッションが終了するまで待機します。認識結果は複数話者・複数発話分がリストで返されます。エッジケースとして、無音ファイルや認識できない音声の場合は空リストが返されます。APIキーやリージョンが未設定の場合、例外が発生します。音声ファイルのパスが不正な場合やファイルが存在しない場合も例外となります。",
+            "params": "  - original_audio_path: str",
+            "returns": "音声認識結果のリストを返します。各要素はDict[str, Any]型で、Azureの認識結果JSONをパースしたものです。例: [{\"Text\": \"こんにちは。\", \"SpeakerId\": \"1\", \"Offset\": 123456789, \"Duration\": 9876543, ...}, {...}]",
+            "params_example": "",
+            "return_example": ""
+          }
+        },
+        {
+          "method_id": "speech_to_text",
+          "method_name": "speech_to_text",
+          "method_detail": {
+            "description": "この関数は、IR会議や投資家との会話などの音声ファイル（original_audio_path）を文字起こしし、テキストデータとして返します。話者分離（with_diarization）が有効な場合は、複数話者の発言を区別して文字起こしします。プロンプト（prompt）は、文字起こし精度向上のために文脈情報として利用されます。内部的には、まずローカルAIサーバーのヘルスチェック（health_check_local_server）を行い、利用可能であればローカルサーバー（speech_to_text_local_server）で文字起こしを実施し、結果を整形（convert_format, clean_up）して返します。ローカルサーバーが利用不可の場合は、Azure Speechサービス（speech_to_text_azure）を利用します。エッジケースとして、音声ファイルが存在しない場合や、ローカルサーバー・Azureサービスのいずれも失敗した場合は例外が発生します。関数は直接呼び出すことで利用でき、議事録作成や会話分析などに活用されます。",
+            "params": "  - original_audio_path: str\n  - with_diarization: bool\n  - prompt: str",
+            "returns": "文字起こし結果の文字列。例: '投資家: 御社の今期業績について教えてください。IR担当者: 今期は売上が前年比10%増加しました。'。話者分離が有効な場合は、話者ごとに発言が区別されます。",
+            "params_example": "  例:\n```python\n{\n    \"audio_path\": \"/data/audio/meeting.wav\",\n    \"enable_diarization\": true,\n    \"transcription_prompt\": \"下記は、IR担当者と投資家が会社について話し合う会議の会話です。\"\n}\n```\n",
+            "return_example": ""
+          }
+        }
+      ]
+    }
+  },
+  "interface_design": {
+    "endpoints": [
+      {
+        "api_path": "/login",
+        "http_method": "GET",
+        "params": [
+          {
+            "name": "req",
+            "type": "Request",
+            "param_type": "リクエストオブジェクト（自動注入）",
+            "description": "リクエスト情報（ヘッダー、クッキー等）を取得するためのFastAPIオブジェクト"
+          }
+        ],
+        "return_type": "TemplateResponse",
+        "return_description": [
+          "Jinja2TemplatesのTemplateResponseオブジェクト。HTMLテンプレート（login.html）がレンダリングされ、リクエスト情報をcontextとして渡す。例：ユーザーがログインページにアクセスした際、login.htmlが表示される。"
+        ],
+        "exceptions": {
+          "TemplateNotFound": "テンプレートファイル（login.html）がtemplatesディレクトリに存在しない場合に発生する。"
+        },
+        "flowchart": [
+          "@startuml",
+          "title /login (GET) API 処理・例外フロー",
+          "",
+          "start",
+          "",
+          ":リクエスト受信 (GET /login);",
+          ":Requestオブジェクト(req)を取得;",
+          "",
+          ":テンプレートエンジン(template)で",
+          "login.htmlをレンダリングしようとする;",
+          "",
+          "alt テンプレートファイル(login.html)が存在する場合",
+          "    :TemplateResponseを生成;",
+          "    :contextにrequest情報(req)を渡す;",
+          "    :HTMLレスポンスを返却;",
+          "else テンプレートファイル(login.html)が存在しない場合",
+          "    :TemplateNotFound例外が発生;",
+          "    :500 Internal Server Errorを返却;",
+          "end",
+          "",
+          "stop",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/meeting-minutes",
+        "http_method": "GET",
+        "params": [
+          {
+            "name": "req",
+            "type": "Request",
+            "param_type": "依存性注入パラメータ",
+            "description": "リクエスト情報（ユーザー、セッション、ヘッダーなど）を保持するFastAPIのRequestオブジェクト"
+          }
+        ],
+        "return_type": "TemplateResponse",
+        "return_description": [
+          "take_minutes.htmlテンプレートをレンダリングしたTemplateResponseオブジェクト。contextには、リクエスト情報と、file_idとファイル名の辞書（例：{\"abc123\": \"議事録2024年6月.docx\", \"def456\": \"議事録2024年5月.docx\"}）が含まれる。"
+        ],
+        "exceptions": {
+          "OSError": "ディレクトリ作成やファイルの読み書き時に、権限不足やストレージ障害などで発生する可能性があります。",
+          "json.JSONDecodeError": "file_id.jsonの内容が不正なJSON形式の場合に発生します。"
+        },
+        "flowchart": [
+          "@startuml",
+          "title /meeting-minutes (GET) API 処理・例外フロー",
+          "",
+          "start",
+          "",
+          ":リクエスト受信 (req: Request);",
+          "",
+          ":議事録ファイルID保存用ディレクトリの存在確認;",
+          "if (ディレクトリが存在しない?) then (はい)",
+          "  :ディレクトリ作成;",
+          "  if (OSError発生?) then (はい)",
+          "    :エラーログ出力;",
+          "    :500エラー応答 (TemplateResponseでエラー表示);",
+          "    stop",
+          "  endif",
+          "endif",
+          "",
+          ":file_id.jsonファイルの存在確認;",
+          "if (file_id.jsonが存在しない?) then (はい)",
+          "  :空の辞書を作成;",
+          "  :file_id.jsonに空の辞書を書き込み;",
+          "  if (OSError発生?) then (はい)",
+          "    :エラーログ出力;",
+          "    :500エラー応答 (TemplateResponseでエラー表示);",
+          "    stop",
+          "  endif",
+          "endif",
+          "",
+          ":file_id.jsonファイルを読み込み;",
+          "if (OSError発生?) then (はい)",
+          "  :エラーログ出力;",
+          "  :500エラー応答 (TemplateResponseでエラー表示);",
+          "  stop",
+          "endif",
+          "if (json.JSONDecodeError発生?) then (はい)",
+          "  :エラーログ出力;",
+          "  :file_id.jsonを空の辞書で上書き保存;",
+          "  :ファイル一覧は空として処理継続;",
+          "endif",
+          "",
+          ":context作成 (req, file_idとファイル名の辞書);",
+          "",
+          ":take_minutes.htmlテンプレートをレンダリング;",
+          ":TemplateResponseを返却;",
+          "",
+          "stop",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/expected-QA",
+        "http_method": "GET",
+        "params": [
+          {
+            "name": "req",
+            "type": "Request",
+            "param_type": "リクエストオブジェクト（自動注入）",
+            "description": "FastAPIのリクエスト情報を保持するオブジェクト"
+          }
+        ],
+        "return_type": "TemplateResponse",
+        "return_description": [
+          "expected_QA.htmlテンプレートをレンダリングしたTemplateResponseオブジェクト。contextには、リクエスト情報と、QASファイルIDとファイル名の辞書（例：{\"abc123\": \"2024年度QAリスト.docx\", \"def456\": \"2023年度QAリスト.docx\"}）が含まれる。"
+        ],
+        "exceptions": {},
+        "flowchart": [
+          "@startuml",
+          "title fetch_expected_qa_list(req: Request) の処理・例外フロー",
+          "",
+          "start",
+          "",
+          ":リクエスト情報(req)を受け取る;",
+          "",
+          ":QASファイルID情報保存ディレクトリの存在確認;",
+          "if (ディレクトリが存在しない?) then (はい)",
+          "  :ディレクトリを作成;",
+          "endif",
+          "",
+          ":QAS_FILEID_JSON_FILE_PATHの存在確認;",
+          "if (JSONファイルが存在しない?) then (はい)",
+          "  :空の辞書でJSONファイルを初期化;",
+          "endif",
+          "",
+          ":JSONファイルからファイルIDとファイル名の辞書を読み込む;",
+          "",
+          ":contextを作成;",
+          "note right",
+          "  contextには",
+          "  ・リクエスト情報",
+          "  ・ファイルIDとファイル名の辞書",
+          "  を含む",
+          "end note",
+          "",
+          ":expected_QA.htmlテンプレートをcontextでレンダリング;",
+          "",
+          ":TemplateResponseを返却;",
+          "",
+          "stop",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/meeting-minutes/generated-content",
+        "http_method": "POST",
+        "params": [
+          {
+            "name": "req",
+            "type": "Request",
+            "param_type": "依存性注入（FastAPIのリクエストオブジェクト）",
+            "description": "リクエスト情報やセッション、ユーザー情報を保持するオブジェクト"
+          },
+          {
+            "name": "meeting_file",
+            "type": "UploadFile",
+            "param_type": "フォームデータ（ファイルアップロード）",
+            "description": "アップロードされた会議議事録ファイル"
+          }
+        ],
+        "return_type": "TemplateResponse",
+        "return_description": [
+          "HTMLテンプレート（meeting_summary_result.html）をレンダリングしたTemplateResponseオブジェクト。contextには変換済みコメント、QAリスト、ファイルID、ファイル名などが含まれます。例：context={\"comments\": [\"議事録コメント1\", \"議事録コメント2\"], \"QAs\": [{\"question\": \"Q1\", \"answer\": \"A1\"}], \"file_id\": \"abc123\", \"file_name\": \"2024-06-01_meeting.txt\"}"
+        ],
+        "exceptions": {
+          "HTTPException": "meeting_fileが空の場合（ファイルがアップロードされていない場合）に400エラーとして発生します。",
+          "Exception": "ファイル保存処理（os.makedirs, open, write等）で予期しないエラーが発生した場合に発生します。"
+        },
+        "flowchart": [
+          "@startuml",
+          "start",
+          "",
+          ":リクエスト受信 (POST /meeting-minutes/generated-content);",
+          ":meeting_fileの存在確認;",
+          "",
+          "alt meeting_fileが存在しない場合",
+          "    :HTTPException(400)を発生;",
+          "    stop",
+          "end",
+          "",
+          ":meeting_fileの内容を取得;",
+          "if (ファイル内容が空か?) then (Yes)",
+          "    :HTTPException(400)を発生;",
+          "    stop",
+          "endif",
+          "",
+          ":既存ファイルIDデータをload_existing_dataで取得;",
+          ":新規file_idをgenerate_file_idで生成;",
+          ":ファイル名・file_id・作成日時をfile_id.jsonに保存;",
+          "",
+          ":保存先ディレクトリパスを生成;",
+          ":ディレクトリ存在確認;",
+          "",
+          "alt ディレクトリが存在しない場合",
+          "    :os.makedirsでディレクトリ作成;",
+          "    note right: 例外発生時はエラーメッセージを記録し処理継続",
+          "end",
+          "",
+          ":meeting_fileを保存先ディレクトリに保存;",
+          "note right: 例外発生時はエラーメッセージを記録し処理継続",
+          "",
+          ":extract_comments_and_qa.create_gijiroku_dataでファイル内容解析;",
+          ":コメント・QAデータ抽出;",
+          "",
+          ":comments_and_qa.jsonとして抽出データを保存;",
+          "",
+          ":transform_comment_dataでコメントデータを変換;",
+          "",
+          ":TemplateResponseでmeeting_summary_result.htmlをレンダリング;",
+          ":contextに変換済みコメント, QAリスト, file_id, file_name等をセット;",
+          "",
+          "stop",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/meeting-minutes/generated-content/{file_id}",
+        "http_method": "GET",
+        "params": [
+          {
+            "name": "-",
+            "type": "-",
+            "param_type": "フレームワークによる自動注入",
+            "description": "FastAPIが自動的に提供するリクエスト情報オブジェクト"
+          },
+          {
+            "name": "file_id",
+            "type": "str",
+            "param_type": "パスパラメータ",
+            "description": "議事録ファイルを一意に識別するID"
+          }
+        ],
+        "return_type": "TemplateResponseまたはdict<str, str>",
+        "return_description": [
+          "議事録のコメントとQAデータを含むHTMLテンプレートのレスポンス、またはエラー時はJSON形式のエラーメッセージ。例：正常時はmeeting_summary_result.htmlがレンダリングされ、contextに{'comments': [...], 'QAs': [...], 'file_id': '20240601_001', 'file_name': '議事録20240601.docx'}などが含まれる。エラー時は{'error': 'File not found: 議事録20240601.docx'}や{'error': 'Invalid JSON in file: 議事録20240601.docx'}のようなJSONが返る。"
+        ],
+        "exceptions": {
+          "FileNotFoundError": "comments_and_qa.jsonファイルが指定されたパスに存在しない場合に発生します。",
+          "JSONDecodeError": "comments_and_qa.jsonファイルの内容が不正なJSON形式の場合に発生します。"
+        },
+        "flowchart": [
+          "@startuml",
+          "start",
+          "",
+          ":リクエスト受信 (GET /meeting-minutes/generated-content/{file_id});",
+          ":FILEID_JSON_FILE_PATHからfile_idとファイル名の対応表を読み込む;",
+          "",
+          "if (file_idが対応表に存在するか?) then (はい)",
+          "  :file_idに対応するファイル名を取得;",
+          "  :GIJIROKU_FOLDER/file_id/comments_and_qa.jsonのパスを生成;",
+          "",
+          "  if (comments_and_qa.jsonファイルが存在するか?) then (はい)",
+          "    :comments_and_qa.jsonを開いてJSONデータを読み込む;",
+          "",
+          "    if (JSONデータが正しいか?) then (はい)",
+          "      :commentsデータをtransform_comment_dataで整形;",
+          "      :QAsデータを取得;",
+          "      :meeting_summary_result.htmlテンプレートをレンダリング;",
+          "      :contextにcomments, QAs, file_id, file_nameをセット;",
+          "      :TemplateResponseを返す;",
+          "      stop",
+          "    else (いいえ)",
+          "      :エラー内容「Invalid JSON in file: {file_name}」をdictで返す;",
+          "      stop",
+          "    endif",
+          "",
+          "  else (いいえ)",
+          "    :エラー内容「File not found: {file_name}」をdictで返す;",
+          "    stop",
+          "  endif",
+          "",
+          "else (いいえ)",
+          "  :エラー内容「File not found: {file_id}」をdictで返す;",
+          "  stop",
+          "endif",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/expected-QA/generated-content",
+        "http_method": "POST",
+        "params": [
+          {
+            "name": "-",
+            "type": "-",
+            "param_type": "フレームワーク依存パラメータ",
+            "description": "FastAPIが自動で注入するリクエスト情報オブジェクト"
+          },
+          {
+            "name": "explanation_materials",
+            "type": "List[UploadFile]",
+            "param_type": "マルチパートフォームデータ",
+            "description": "アップロードされた説明資料ファイルのリスト"
+          }
+        ],
+        "return_type": "TemplateResponse",
+        "return_description": [
+          "HTMLテンプレートによるレスポンス。内容はexpected_QA_result.htmlがレンダリングされ、contextには変換済みのQAデータ（expected_qas）、新規ファイルID（file_id）、ファイル名（file_name）が含まれる。例: TemplateResponse(name='expected_QA_result.html', context={'request': req, 'expected_qas': [...], 'file_id': 'abc123', 'file_name': '資料1.pdf,資料2.docx'})"
+        ],
+        "exceptions": {
+          "Exception": "ファイル保存処理中（ディレクトリ作成、ファイル書き込み、ファイル読み取り）でエラーが発生した場合に捕捉され、エラーメッセージが出力される。"
+        },
+        "flowchart": [
+          "@startuml",
+          "start",
+          "",
+          ":リクエスト(req, explanation_materials)受信;",
+          "",
+          "if (explanation_materialsが空か?) then (はい)",
+          "  :400エラー（ファイル未アップロード）を返す;",
+          "  stop",
+          "else (いいえ)",
+          "  :既存ファイルID情報をload_existing_dataで取得;",
+          "  :新規file_idをgenerate_file_idで生成;",
+          "  :アップロードファイル名を連結してfile_name作成;",
+          "  :現在時刻を取得;",
+          "  :QAS_FOLDERディレクトリが存在しなければos.makedirsで作成;",
+          "  :ファイルID情報(JSON)にfile_id, file_name, 作成日時を追加;",
+          "  :QAS_FILEID_JSON_FILE_PATHにjson.dumpで保存;",
+          "",
+          "  :expected_qas_listを空リストで初期化;",
+          "",
+          "  :各explanation_materialsファイルについて繰り返し;",
+          "    :ファイル保存処理開始;",
+          "    try",
+          "      :ファイルをQAS_FOLDER配下に保存;",
+          "      :expected_QA.create_qaでQAデータ生成;",
+          "      :expected_qas_listに追加;",
+          "    catch (Exception e)",
+          "      :エラーメッセージをログ出力;",
+          "      :処理継続;",
+          "    end",
+          "",
+          "  :expected_QA.qa_mergeでexpected_qas_listを統合;",
+          "  :統合QAデータをexpected_qas.jsonとして保存;",
+          "  :transform_expected_qas_dataでテンプレート用データに変換;",
+          "",
+          "  :TemplateResponseでexpected_QA_result.htmlをレンダリング;",
+          "  :contextにrequest, expected_qas, file_id, file_nameをセット;",
+          "  :HTMLレスポンスを返す;",
+          "  stop",
+          "endif",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/expected-QA/generated-content/{file_id}",
+        "http_method": "GET",
+        "params": [
+          {
+            "name": "-",
+            "type": "-",
+            "param_type": "リクエストオブジェクト（自動注入）",
+            "description": "FastAPIが自動で提供するリクエスト情報全般を保持するオブジェクト"
+          },
+          {
+            "name": "file_id",
+            "type": "str",
+            "param_type": "クエリパラメータ",
+            "description": "表示対象のQAデータファイルを識別するID"
+          }
+        ],
+        "return_type": "TemplateResponse または dict<str, str>",
+        "return_description": [
+          "正常時はTemplateResponse（HTMLレンダリング結果）を返す。ファイルが存在しない場合やJSONが不正な場合は、Dict[str, str]型のエラーメッセージを返す。例：{\"error\": \"File not found: QA資料.docx\"} または {\"error\": \"Invalid JSON in file: QA資料.docx\"}"
+        ],
+        "exceptions": {
+          "FileNotFoundError": "expected_qas.jsonファイルが指定パスに存在しない場合に発生します。",
+          "json.JSONDecodeError": "expected_qas.jsonファイルの内容が不正なJSONの場合に発生します。"
+        },
+        "flowchart": [
+          "@startuml",
+          "title get_expected_QA_result(req: Request, file_id: str) の処理・例外フロー",
+          "",
+          "start",
+          "",
+          ":QAS_FILEID_JSON_FILE_PATHからファイルIDとファイル名の一覧を読み込む;",
+          ":一覧からfile_idに一致するファイル情報を検索;",
+          "",
+          "alt file_idが存在しない場合",
+          "    :{\"error\": \"File not found: {file_id}\"} を返す;",
+          "    stop",
+          "else file_idが存在する場合",
+          "    :QAS_FOLDER配下のexpected_qas.jsonのパスを取得;",
+          "    :expected_qas.jsonファイルの存在を確認;",
+          "",
+          "    alt ファイルが存在しない場合",
+          "        :{\"error\": \"File not found: expected_qas.json\"} を返す;",
+          "        stop",
+          "    else ファイルが存在する場合",
+          "        :expected_qas.jsonを開いてJSONデータを読み込む;",
+          "",
+          "        alt JSONが不正な場合 (json.JSONDecodeError)",
+          "            :{\"error\": \"Invalid JSON in file: expected_qas.json\"} を返す;",
+          "            stop",
+          "        else JSONが正常な場合",
+          "            :transform_expected_qas_data関数でデータを整形;",
+          "            :テンプレート 'expected_QA_result.html' にレンダリング;",
+          "            :TemplateResponseを返す;",
+          "            stop",
+          "        end",
+          "    end",
+          "end",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/api/v1/download/{task}/{file_id}",
+        "http_method": "GET",
+        "params": [
+          {
+            "name": "-",
+            "type": "-",
+            "param_type": "リクエストオブジェクト（自動注入）",
+            "description": "FastAPIが自動で注入するリクエスト情報（ヘッダー、クッキー等）"
+          },
+          {
+            "name": "task",
+            "type": "IRToolTask",
+            "param_type": "クエリパラメータ",
+            "description": "ダウンロード対象のタスク種別を指定する"
+          },
+          {
+            "name": "file_id",
+            "type": "str",
+            "param_type": "クエリパラメータ",
+            "description": "ダウンロード対象ファイルのID"
+          }
+        ],
+        "return_type": "Response",
+        "return_description": [
+          "ダウンロード対象のファイルデータをバイト列として返却し、適切なMIMEタイプ（議事録の場合はWord、QAの場合はExcel）でレスポンスを返す。例: Response(doc_file_bytes, media_type=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document\")"
+        ],
+        "exceptions": {
+          "FileNotFoundError": "指定されたfile_idに対応するファイルが存在しない場合、またはファイルデータの読み込みに失敗した場合に発生します。",
+          "JSONDecodeError": "JSONファイルの読み込み時に不正なフォーマットの場合に発生します。"
+        },
+        "flowchart": [
+          "@startuml",
+          "start",
+          "",
+          ":リクエスト受信 (GET /api/v1/download/{task}/{file_id});",
+          ":task, file_idを取得;",
+          "",
+          "if (taskがIRToolTask.GIJIROKUか?) then (はい)",
+          "  :FILEID_JSON_FILE_PATHからJSON読み込み;",
+          "  :file_idに一致するファイル情報を検索;",
+          "  if (ファイル情報が存在するか?) then (はい)",
+          "    :GIJIROKU_FOLDERからcomments_and_qa.jsonを読み込み;",
+          "    :GijirokuData.from_dictでデータ変換;",
+          "    :convert_to_docx_dataでWord形式バイトデータに変換;",
+          "    :Response(doc_file_bytes, media_type=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document\")で返却;",
+          "    stop",
+          "  else (いいえ)",
+          "    :404エラー (ファイルIDが存在しない);",
+          "    stop",
+          "  endif",
+          "else (いいえ)",
+          "  if (taskがIRToolTask.QASか?) then (はい)",
+          "    :QAS_FILEID_JSON_FILE_PATHからJSON読み込み;",
+          "    :file_idに一致するファイル情報を検索;",
+          "    if (ファイル情報が存在するか?) then (はい)",
+          "      :QAS_FOLDERからexpected_qas.jsonを読み込み;",
+          "      :ExpectedQAData.from_dictでデータ変換;",
+          "      :convert_to_docx_dataでExcel形式バイトデータに変換;",
+          "      :Response(excel_file_bytes, media_type=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\")で返却;",
+          "      stop",
+          "    else (いいえ)",
+          "      :404エラー (ファイルIDが存在しない);",
+          "      stop",
+          "    endif",
+          "  else (いいえ)",
+          "    :400エラー (不正なtask種別);",
+          "    stop",
+          "  endif",
+          "endif",
+          "",
+          "' 例外処理",
+          "partition 例外処理 {",
+          "  :FileNotFoundError発生時;",
+          "  :404エラー (ファイルが見つからない);",
+          "",
+          "  :JSONDecodeError発生時;",
+          "  :500エラー (JSONフォーマット不正);",
+          "}",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/login",
+        "http_method": "POST",
+        "params": [
+          {
+            "name": "-",
+            "type": "-",
+            "param_type": "リクエスト依存パラメータ（FastAPIのRequestオブジェクト）",
+            "description": "リクエスト情報（クッキーやヘッダーなど）を取得するためのオブジェクト"
+          },
+          {
+            "name": "username",
+            "type": "str",
+            "param_type": "フォームパラメータ",
+            "description": "ログインするユーザー名"
+          },
+          {
+            "name": "password",
+            "type": "str",
+            "param_type": "フォームパラメータ",
+            "description": "ログインするユーザーのパスワード"
+          }
+        ],
+        "return_type": "Union[RedirectResponse, TemplateResponse]",
+        "return_description": [
+          "ログイン成功時はRedirectResponseオブジェクト（例：status_code=303, url='/dashboard'）。失敗時はTemplateResponseオブジェクト（例：login.htmlテンプレート、エラーメッセージ付き）。"
+        ],
+        "exceptions": {
+          "HTTPException": "フォームデータが不正、または内部的な認証処理で例外が発生した場合。"
+        },
+        "flowchart": [
+          "@startuml",
+          "title /login (POST) API 処理・例外フロー",
+          "",
+          "start",
+          "",
+          ":リクエスト受信 (req, username, password);",
+          "",
+          "if (username または password が空か?) then (はい)",
+          "  :エラーメッセージ「ユーザー名とパスワードは必須です」;",
+          "  :login.htmlテンプレートをエラーメッセージ付きで返却;",
+          "  stop",
+          "else (いいえ)",
+          "  :session_manager.login(username, password)で認証;",
+          "  if (認証成功?) then (はい)",
+          "    :クッキーから pre_login_url を取得;",
+          "    if (pre_login_url が存在?) then (はい)",
+          "      :pre_login_url へリダイレクト (303);",
+          "    else (いいえ)",
+          "      :'/' へリダイレクト (303);",
+          "    endif",
+          "    :セッションIDをクッキーにセット;",
+          "    :RedirectResponse を返却;",
+          "    stop",
+          "  else (いいえ)",
+          "    :エラーメッセージ「ユーザー名またはパスワードが不正です」;",
+          "    :login.htmlテンプレートをエラーメッセージ付きで返却;",
+          "    stop",
+          "  endif",
+          "endif",
+          "",
+          ":内部例外発生 (例: session_manager 内部エラー);",
+          ":HTTPException を発生させる;",
+          "stop",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/api/v1/health_check",
+        "http_method": "GET",
+        "params": [],
+        "return_type": "bool",
+        "return_description": [
+          "ローカルAIサーバーが正常に稼働している場合はTrue、そうでない場合はFalseを返します。例: True"
+        ],
+        "exceptions": {
+          "requests.exceptions.RequestException": "サーバーへの接続失敗、タイムアウト、ネットワーク障害、または不正なレスポンスが返された場合に発生します。"
+        },
+        "flowchart": [
+          "@startuml",
+          "title health_check_local_server() の処理・例外フロー",
+          "",
+          "start",
+          "",
+          ":環境変数 'LOCAL_AI_SERVER_ADDRESS' を取得;",
+          "if (サーバーアドレスが未設定?) then (はい)",
+          "  :False を返す;",
+          "  stop",
+          "else (いいえ)",
+          "  :環境変数 'LOCAL_AI_SERVER_PORT' (デフォルト3101) を取得;",
+          "  :環境変数 'LOCAL_AI_SERVER_KEY' を取得;",
+          "  :ヘルスチェックAPIのURLを組み立てる;",
+          "  :認証ヘッダーを設定;",
+          "  :GETリクエストを送信;",
+          "  if (リクエスト送信時に例外発生?) then (はい)",
+          "    :requests.exceptions.RequestException をキャッチ;",
+          "    :False を返す;",
+          "    stop",
+          "  else (いいえ)",
+          "    if (レスポンスステータスコード == 200?) then (はい)",
+          "      :True を返す;",
+          "      stop",
+          "    else (いいえ)",
+          "      :False を返す;",
+          "      stop",
+          "    endif",
+          "  endif",
+          "endif",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "api_path": "/api/v1/register/transcribe_diarize",
+        "http_method": "POST",
+        "params": [
+          {
+            "name": "original_audio_path",
+            "type": "str",
+            "param_type": "リクエストボディパラメータ",
+            "description": "音声ファイルのパスを指定するパラメータ"
+          },
+          {
+            "name": "with_diarization",
+            "type": "bool",
+            "param_type": "リクエストボディパラメータ",
+            "description": "話者分離を有効にするかどうかを指定するパラメータ"
+          },
+          {
+            "name": "prompt",
+            "type": "str",
+            "param_type": "リクエストボディパラメータ",
+            "description": "AIサーバーに送信するプロンプト文を指定するパラメータ"
+          }
+        ],
+        "return_type": "dict<str, Any>",
+        "return_description": [
+          "音声認識結果を含む辞書型データ。例: {\"transcript\": \"会社の業績について説明します。\", \"speakers\": [{\"id\": 1, \"text\": \"会社の業績について説明します。\"}, {\"id\": 2, \"text\": \"ありがとうございます。\"}], \"process_id\": \"abc123\", \"state\": \"finished\"}"
+        ],
+        "exceptions": {
+          "AiServerError": "サーバーへの登録失敗時、タスクが見つからない場合、APIレスポンスが異常な場合、または認識処理が失敗した場合に発生します。"
+        },
+        "flowchart": [
+          "@startuml",
+          "start",
+          "",
+          ":音声ファイルパス(original_audio_path)の存在を確認;",
+          "if (ファイルが存在しない) then (はい)",
+          "    :AiServerErrorを投げる;",
+          "    stop",
+          "endif",
+          "",
+          ":音声ファイルをbase64エンコード;",
+          ":osモジュールからサーバーアドレス・ポート・認証キー取得;",
+          "",
+          "if (with_diarization == True) then (話者分離あり)",
+          "    :POST /api/v1/register/transcribe_diarize へリクエスト送信;",
+          "else (話者分離なし)",
+          "    :POST /api/v1/register/transcribe へリクエスト送信;",
+          "endif",
+          "",
+          "if (POSTレスポンスが異常 or process_id未取得) then (異常)",
+          "    :AiServerErrorを投げる;",
+          "    stop",
+          "endif",
+          "",
+          ":process_idを取得;",
+          "repeat",
+          "    :GET /api/v1/check_status/{process_id} で状態確認;",
+          "    if (APIレスポンスが異常) then (異常)",
+          "        :AiServerErrorを投げる;",
+          "        stop",
+          "    endif",
+          "    if (state == \"finished\") then (完了)",
+          "        break",
+          "    endif",
+          "    :time.sleepで待機;",
+          "repeat while (state != \"finished\")",
+          "",
+          ":GET /api/v1/retrieve/{process_id} で結果取得;",
+          "if (APIレスポンスが異常 or 認識失敗) then (異常)",
+          "    :AiServerErrorを投げる;",
+          "    stop",
+          "endif",
+          "",
+          ":認識結果(dict)を返却;",
+          "stop",
+          "@enduml"
+        ]
+      }
+    ]
+  },
+  "folder_structure": {
+    "summaries": {
+      "minutesgen": "議事録生成用スクリプト群",
+      "templates": "HTMLテンプレート格納用"
+    },
+    "folder_structure": [
+      "InvestorRelationsTool/",
+      "├── .dockerignore",
+      "├── .env.sample",
+      "├── .gitignore",
+      "├── Dockerfile",
+      "├── README.md",
+      "├── access_info_file.sample.json",
+      "├── data_structures.py",
+      "├── doc_conversion.py",
+      "├── doc_conversion_helpers.py",
+      "├── docker_run.sh",
+      "├── docker_setup.sh",
+      "├── expected_QA.py",
+      "├── main.py",
+      "├── minutesgen/                # 議事録生成用スクリプト群",
+      "│   ├── classify_ir_meeting_speakers.py",
+      "│   ├── extract_comments_and_qa.py",
+      "│   ├── extract_qa_topic.py",
+      "│   ├── ir_extract_comments.py",
+      "│   ├── ir_fix_speaker_id_issues.py",
+      "│   ├── ir_group_into_questions.py",
+      "│   ├── qa_spoken_to_report.py",
+      "│   └── transcribe_with_azure_speech.py",
+      "├── requirements.txt",
+      "├── session_manager.py",
+      "└── templates/                # HTMLテンプレート格納用",
+      "    ├── expected_QA.html",
+      "    ├── expected_QA_result.html",
+      "    ├── login.html",
+      "    ├── meeting_summary_result.html",
+      "    ├── menu.html",
+      "    └── take_minutes.html"
+    ]
+  }
+}
