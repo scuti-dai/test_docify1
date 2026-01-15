@@ -1,0 +1,3305 @@
+{
+  "architecture_design": {
+    "architecture_pattern": {
+      "pattern": "Layered  \nMonolithic  \nHexagonal  \nClean Architecture",
+      "reason": [
+        {
+          "functional": "本システムは議事録や想定QAの生成・管理・ダウンロードなど複数の業務機能を持ち、音声・動画・PDF・Excel等の多様なファイル形式を扱う必要がある。FastAPIベースのWeb APIとテンプレートエンジンを組み合わせたレイヤードアーキテクチャを採用することで、ファイルアップロード、AI連携による解析、データの構造化・保存・表示・ダウンロードといった一連の業務フローを疎結合かつ明確な責務分離で実現できる。また、セッション管理や認証、アクセス権限管理もミドルウェア層で一元的に実装でき、データ整合性や業務要件の拡張にも柔軟に対応可能である。",
+          "quality": "AI連携や音声認識、LLM APIとの外部通信など高負荷・高遅延な処理を非同期APIやバッチ処理として分離できるため、Web UIの応答性や全体のスケーラビリティを確保しやすい。Dockerによるコンテナ化により、依存パッケージや外部サービスとの連携設定を環境変数で管理し、セキュリティ（認証情報の秘匿、アクセス情報の暗号化）や可用性（障害時のコンテナ再起動、スケールアウト）も担保できる。API層と業務ロジック層の分離により、将来的な機能追加や外部サービス切り替えにも影響範囲を限定できる。",
+          "operations": "Dockerfileやシェルスクリプトによる環境構築・起動自動化、.envファイルによる設定値の一元管理、.dockerignore/.gitignoreによる不要ファイルの除外などにより、運用コストを低減しつつCI/CDパイプラインへの組み込みが容易である。APIベースの構成により監視や障害対応も標準的なAPMやログ収集基盤と連携しやすく、セッション管理や認証状態の一元管理により運用時のトラブルシュートも容易となる。データモデルや変換処理が明確に分離されているため、保守性・テスト容易性も高い。"
+        }
+      ],
+      "scope": [
+        {
+          "approach": "APIサーバー（main.py）およびminutesgen配下の音声・議事録・QA処理モジュールをドメインごとに分割し、ドメイン駆動設計（DDD）を段階的に適用",
+          "purpose": "議事録生成・QA生成・認証管理などのドメインごとに責務を明確化し、変更影響の局所化と保守性・拡張性の向上を図る"
+        },
+        {
+          "approach": "minutesgen配下のAI連携処理（OpenAI/Azure/Anthropic LLM API呼び出し）を非同期イベント基盤（Celery等）に切り出し、バックグラウンドジョブとして実行",
+          "purpose": "AI API連携の遅延・リトライ・スケーラビリティ課題を解消し、ユーザー体験の向上と水平スケールを実現する"
+        },
+        {
+          "approach": "APIエンドポイント（main.py）とデータ変換・ファイル生成処理（doc_conversion.py等）をRESTful API設計原則に基づき疎結合化",
+          "purpose": "APIの拡張性・再利用性を高め、将来的なフロントエンドや他システム連携の柔軟性を確保する"
+        },
+        {
+          "approach": "session_manager.pyによる認証・セッション管理をインフラ層に集約し、APIサーバーからはインターフェース越しに利用する形で全体適用",
+          "purpose": "認証・セッション管理の一元化によるセキュリティ強化と、認証方式変更時の影響範囲最小化"
+        },
+        {
+          "approach": "データモデル（GijirokuData, ExpectedQAData, QAItem, CommentSection等）を全体で統一し、DTO（Data Transfer Object）パターンを適用",
+          "purpose": "データ構造の一貫性を保ち、データ変換・入出力処理の保守性とテスト容易性を向上させる"
+        },
+        {
+          "approach": "Dockerfile, docker_setup.sh, docker_run.sh, .env.sample, requirements.txt等によるインフラ自動化・コンテナ化を全体適用",
+          "purpose": "開発・本番環境の構成統一、デプロイ自動化、環境依存性の排除による運用効率化"
+        },
+        {
+          "approach": "templates配下の各HTMLテンプレートとAPIサーバー間の通信をクリーンアーキテクチャのプレゼンテーション層・アプリケーション層分離として整理",
+          "purpose": "UI/UXの変更やAPI仕様変更時の影響範囲を限定し、フロントエンド・バックエンドの独立性を高める"
+        }
+      ]
+    },
+    "layer_structure": [
+      {
+        "name": "プレゼンテーションレイヤ",
+        "role": "ユーザーインターフェースの表示、ユーザーからの入力受付、画面遷移や操作イベントの管理を担う。Web画面のレンダリングやフォーム送信、ダウンロード・アップロード操作の起点となる。",
+        "trait": "ユーザー体験に特化し、アプリケーションレイヤへの依存のみを持つ。業務ロジックやデータ処理は持たず、関心の分離を徹底。テンプレートエンジンやAPIエンドポイントとの連携を通じてデータを受け渡す。"
+      },
+      {
+        "name": "アプリケーションレイヤ",
+        "role": "業務フローの制御、ユースケースの実現、画面・APIリクエストの受付と処理、ドメインロジックの呼び出し、データの変換・集約・レスポンス生成を担う。",
+        "trait": "ドメインレイヤ・インフラストラクチャレイヤへの依存を持ち、プレゼンテーションレイヤからの要求を受けて処理を調整。状態管理や認証・セッション制御、ファイルID生成、データの整形・変換などを担当。業務ロジックとUI・データアクセスの分離を維持。"
+      },
+      {
+        "name": "ドメインレイヤ",
+        "role": "業務ルール・データモデル・主要なビジネスロジックの実装、議事録・QA・コメント・認証情報などの構造化データの管理、AI・LLMを用いた自然言語処理やデータ変換の中心を担う。",
+        "trait": "アプリケーションレイヤからのみ参照され、インフラストラクチャレイヤへの依存は持たない。データ構造の一貫性・安全性を保証し、業務知識・ルールを集約。AI連携やデータ抽出・分類・マージ・要約などの複雑な処理を内包。"
+      },
+      {
+        "name": "インフラストラクチャレイヤ",
+        "role": "外部サービス・API・データベース・ファイルシステム・認証基盤・暗号化処理・AIサーバー・クラウドサービスとの連携、データの永続化・取得・外部通信・環境変数管理を担う。",
+        "trait": "ドメイン・アプリケーションレイヤから呼び出され、技術的な詳細や外部依存を隠蔽。データアクセス・ファイル操作・API通信・暗号化・復号・環境設定などを担当し、関心の分離と依存逆転を徹底。"
+      }
+    ],
+    "technology_stack": {
+      "selection_criteria": [
+        {
+          "performance_requirement": "音声・動画ファイルのアップロードから議事録・QA生成までの一連処理が、1ファイルあたり10分以内で完了することを目標とし、LLMや音声認識APIのレスポンス遅延を考慮して非同期処理やバッチ処理を採用する。大量ファイル同時処理時もサーバーリソース枯渇を防ぐ設計とする。",
+          "availability": "Dockerコンテナによるデプロイと、外部API（Azure Speech, OpenAI, AnthropicLLM）障害時のフェールオーバー（ローカルAIサーバー利用等）を考慮し、主要機能（議事録・QA生成、ダウンロード、認証）が99.5%以上の稼働率を維持できる構成とする。",
+          "scalability": "音声認識・LLM API連携部分は外部サービスのスケーラビリティに依存しつつ、Dockerベースでアプリケーションサーバーの水平スケールが可能な設計とし、ファイルアップロード・解析・ダウンロードの同時リクエストが10件以上発生しても処理遅延や障害が発生しないことを基準とする。",
+          "security": "ユーザー認証・セッション管理はAES暗号化・環境変数によるキー管理を必須とし、アクセス情報ファイルの暗号化保存、APIエンドポイントの認証必須化、アップロードファイルの拡張子・サイズ制限、外部APIキーの秘匿管理を徹底する。セッションIDの推測耐性やXSS/CSRF対策も必須とする。",
+          "operations_maintenance": "Dockerfile・シェルスクリプトによる自動セットアップ、.envファイルによる環境変数管理、requirements.txtによる依存パッケージ一元管理、ログ出力・エラーハンドリングの標準化、外部API障害時のリトライ・エラーメッセージ明示、設定ファイルのサンプル提供（.env.sample, access_info_file.sample.json）を必須とする。",
+          "development_efficiency": "FastAPI・Python3.10系・pydantic・Jinja2テンプレート・Dockerを採用し、ローカル開発・テスト・本番環境の差異を最小化。外部LLM・音声認識APIのラッパー実装やデータモデルの型安全性、ユーティリティ関数の分離、サンプルファイル・テンプレートの充実により、1週間以内で新規開発者が主要機能を理解・改修できることを基準とする。"
+        }
+      ],
+      "recommended_stack": [
+        {
+          "layer": "プレゼンテーション層（Web UI）",
+          "technology": "Jinja2（テンプレートエンジン）＋HTML5",
+          "technology_reason": "サーバーサイドで動的にデータを埋め込んだHTMLを生成し、ユーザーに直感的なWebインターフェースを提供できる。Jinja2はPythonとの親和性が高く、テンプレートの再利用性や保守性にも優れる。",
+          "supporting_technology": "JavaScript（クライアントサイド動作）",
+          "supporting_technology_reason": "ファイル選択やダウンロード、画面遷移などのインタラクションを実現し、ユーザー体験を向上させるため。"
+        },
+        {
+          "layer": "アプリケーション層（APIサーバー）",
+          "technology": "FastAPI",
+          "technology_reason": "Python製の高速Webフレームワークであり、非同期処理や型ヒントによる自動ドキュメント生成、API設計の容易さ、拡張性に優れる。議事録・QA生成などの業務ロジックを効率的に実装可能。",
+          "supporting_technology": "Uvicorn（ASGIサーバー）",
+          "supporting_technology_reason": "FastAPIの非同期機能を最大限に活かし、高速なAPIレスポンスとスケーラビリティを実現するため。"
+        },
+        {
+          "layer": "認証・セッション管理層",
+          "technology": "独自実装（session_manager.py＋pydantic）",
+          "technology_reason": "ユーザー認証・セッションID発行・検証・アクセス情報の暗号化/復号を独自に実装し、柔軟な認証フローやセキュリティ要件に対応。pydanticによるデータモデルで型安全性も確保。",
+          "supporting_technology": "pyAesCrypt",
+          "supporting_technology_reason": "アクセス情報ファイルの暗号化・復号を安全かつ簡便に実現し、機密情報の保護を強化するため。"
+        },
+        {
+          "layer": "業務ロジック層（議事録・QA生成/変換）",
+          "technology": "Python（独自ロジック＋pandas＋openpyxl＋python-docx）",
+          "technology_reason": "議事録やQAデータの解析・変換・構造化・ファイル出力など、複雑な業務ロジックをPythonで柔軟に実装。pandasはデータ処理、openpyxlはExcel出力、python-docxはWord出力に最適。",
+          "supporting_technology": "LLM API（Azure OpenAI, Anthropic）",
+          "supporting_technology_reason": "自然言語処理による発言者分類・コメント抽出・QA生成・要約・トピック分類など、高度なAI処理を外部LLM APIと連携して実現するため。"
+        },
+        {
+          "layer": "インフラ・コンテナ層",
+          "technology": "Docker",
+          "technology_reason": "アプリケーションと依存パッケージ、システム環境をコンテナ化し、開発・テスト・本番環境間での一貫性と移植性を確保。Dockerfileによる自動ビルド・デプロイも容易。",
+          "supporting_technology": "ffmpeg",
+          "supporting_technology_reason": "動画ファイルから音声トラックを抽出し、音声認識処理の前処理として利用するため。"
+        },
+        {
+          "layer": "外部サービス連携層",
+          "technology": "Azure Speech Service",
+          "technology_reason": "高精度な音声認識・話者分離をクラウドサービスとして提供し、IR会議の音声データからテキスト化を効率的に実現できる。",
+          "supporting_technology": "ローカルAIサーバー（独自API）",
+          "supporting_technology_reason": "Azure Speechが利用できない場合やコスト削減のため、ローカルサーバーによる音声認識APIを補完的に利用可能とする。"
+        }
+      ]
+    },
+    "non_functional_requirements": [
+      {
+        "category": "性能・スケーラビリティ",
+        "objective": "IRミーティング議事録や想定QAの生成・変換・ダウンロードなどの主要機能が、複数ユーザーや大容量ファイル（音声・動画・PDF等）の同時処理時にも安定して応答できることを保証する。",
+        "priority": "高",
+        "implementation_policy": "Dockerコンテナによるアプリケーション分離とリソース制御、外部AI/LLM APIやAzure Speechサービスの非同期呼び出し、バッチ処理・キューイングによる負荷分散、ファイルI/Oや変換処理のストリーム化、APIレスポンスのタイムアウト設定を行う。",
+        "measurement": "議事録生成・QA生成・ファイル変換APIの95パーセンタイル応答時間が10秒以内、同時5ユーザーでの正常完了率99%以上"
+      },
+      {
+        "category": "可用性・信頼性",
+        "objective": "システムが障害や外部サービス（AI/LLM API、Azure Speech等）の一時的な不具合時にも、主要機能（議事録・QA生成、ダウンロード、認証）が継続利用できることを保証する。",
+        "priority": "高",
+        "implementation_policy": "Docker Composeによるサービス自動再起動、外部API呼び出しのリトライ・フォールバック実装、ファイル保存・変換処理のトランザクション管理、障害発生時のエラーハンドリングとユーザー通知、重要データの定期バックアップを実施する。",
+        "measurement": "月間サービス稼働率99.5%以上、障害発生時の自動復旧率95%以上、データ損失ゼロ"
+      },
+      {
+        "category": "保守性・運用性",
+        "objective": "システムの機能追加・修正や運用保守作業を容易かつ安全に実施できるようにする。",
+        "priority": "中",
+        "implementation_policy": "機能ごとのモジュール分割（議事録・QA・認証・変換等）、.envファイルによる環境依存値の外部化、requirements.txtによる依存パッケージ管理、Dockerfile・シェルスクリプトによる環境構築自動化、ログ出力・監視機能の実装、Gitによるバージョン管理と.gitignoreによる不要ファイル除外を徹底する。",
+        "measurement": "新規機能追加・バグ修正時のデプロイ作業が1時間以内、障害発生から復旧までの平均対応時間（MTTR）が2時間以内"
+      },
+      {
+        "category": "移植性",
+        "objective": "異なるサーバー環境やクラウド基盤（ローカル/クラウド/CI/CD環境）でもシステムを容易に展開・移行できるようにする。",
+        "priority": "中",
+        "implementation_policy": "Dockerイメージによる環境依存排除、.env.sampleによる環境変数テンプレート提供、requirements.txtでPython依存パッケージを明示、外部サービス連携先（AI/LLM/Speech API等）は環境変数で切り替え可能に設計する。",
+        "measurement": "新規環境へのセットアップ完了まで30分以内、主要機能の動作確認テストが全環境で100%成功"
+      },
+      {
+        "category": "セキュリティ",
+        "objective": "ユーザー認証・アクセス制御・データ暗号化を徹底し、機密情報（議事録・QA・認証情報等）の漏洩や不正アクセスを防止する。",
+        "priority": "高",
+        "implementation_policy": "セッションIDによる認証管理、アクセス情報ファイルのAES暗号化保存、.envによる認証キー・APIキーの外部化、APIエンドポイントの認証必須化、.gitignore/.dockerignoreによる機密ファイルの除外、通信路のHTTPS化（運用時）、パスワード等のハッシュ化保存を徹底する。",
+        "measurement": "未認証アクセス試行時のブロック率100%、アクセス情報ファイルの暗号化率100%、脆弱性診断で重大リスクゼロ"
+      },
+      {
+        "category": "法令・規制遵守",
+        "objective": "個人情報・機密情報の取り扱いに関する法令（例：個人情報保護法、GDPR等）や契約上の規制を遵守する。",
+        "priority": "中",
+        "implementation_policy": "アクセス情報・議事録・QAデータの保存・転送時は暗号化を徹底し、不要データは速やかに削除、.envで外部サービスAPIキー等の管理を明示、ログには個人情報を記録しない設計とする。利用規約・プライバシーポリシーの明示とユーザー同意取得を運用で徹底する。",
+        "measurement": "個人情報・機密情報の暗号化保存率100%、不要データの削除完了まで24時間以内、法令違反・情報漏洩インシデントゼロ"
+      }
+    ]
+  },
+  "system_configuration": {
+    "diagram": [
+      "@startuml",
+      "title System Configuration",
+      "hide stereotype",
+      "",
+      "actor \"Webブラウザ（ユーザー）\" as User",
+      "",
+      "package \"クラウドサービス\" {",
+      "  [Azure Speechサービス] as AzureSpeech",
+      "  [Azure OpenAIサービス] as AzureOpenAI",
+      "  [AnthropicLLM APIサービス] as AnthropicLLM",
+      "}",
+      "",
+      "package \"ローカル環境\" {",
+      "  [IRTool Web APIサーバー] as WebAPI",
+      "  [ローカルAIサーバー（音声認識）] as LocalAIServer",
+      "  [ファイルストレージ（ローカル）] as LocalStorage",
+      "  [Dockerコンテナ基盤] as DockerBase",
+      "}",
+      "",
+      "User --> WebAPI : \"HTTP/HTTPSリクエスト\\n（画面操作・ファイルアップロード・ダウンロード）\"",
+      "WebAPI --> User : \"HTTP/HTTPSレスポンス\\n（画面表示・ファイルダウンロード）\"",
+      "",
+      "WebAPI --> LocalAIServer : \"音声認識API呼び出し\\n（HTTP API）\"",
+      "WebAPI --> AzureSpeech : \"音声認識API呼び出し\\n（クラウドAPI）\"",
+      "WebAPI --> AzureOpenAI : \"自然言語処理API呼び出し\\n（クラウドAPI）\"",
+      "WebAPI --> AnthropicLLM : \"LLM API呼び出し\\n（クラウドAPI）\"",
+      "WebAPI --> LocalStorage : \"ファイル読み書き\\n（JSON, docx, xlsx）\"",
+      "LocalStorage --> WebAPI : \"ファイル読み書き\\n（JSON, docx, xlsx）\"",
+      "",
+      "WebAPI ..> DockerBase : \"Dockerコンテナ基盤上で稼働\\n（ボリューム・ネットワーク・環境変数連携）\"",
+      "DockerBase ..> LocalStorage : \"ボリュームマウントによる連携\"",
+      "DockerBase ..> LocalAIServer : \"ネットワーク連携・環境変数連携\"",
+      "",
+      "@enduml"
+    ],
+    "components": {
+      "IRTool Web APIサーバー": {
+        "component_name": "IRTool Web APIサーバー",
+        "role": "FastAPIベースで稼働し、議事録・想定QAデータのアップロード、解析、保存、表示、ダウンロード、認証・アクセス制御などの業務機能を提供する。ユーザーのHTTPリクエストを受け付け、各種業務ロジックを実行する。",
+        "software_specification": "Python 3.10.10, FastAPI, Jinja2, pyAesCrypt, openpyxl, python-docx, pydantic, requests, ffmpeg, Azure Speech SDK, 外部whlパッケージ（sentan_tools_utils, sentan_tools_nlp）, requirements.txt, main.py, session_manager.py, doc_conversion.py, expected_QA.py, minutesgen/ ディレクトリ配下の各種Pythonファイル",
+        "relationship": "HTTP(S)リクエスト（Webブラウザ）<-> IRTool Web APIサーバー -> ローカルAIサーバー（API）/ Azure Speechサービス（API）/ Azure OpenAI（API）/ 外部LLM API（AnthropicLLM）/ ファイルストレージ（ローカルJSON, docx, xlsx）",
+        "notes": "Dockerコンテナとしてデプロイされる。ポート8000を公開。API/HTMLテンプレート両方を提供。セッション管理・認証機能あり。ファイルアップロード・ダウンロード機能あり。"
+      },
+      "ローカルAIサーバー（音声認識）": {
+        "component_name": "ローカルAIサーバー（音声認識）",
+        "role": "音声ファイルの文字起こし・話者分離を担当し、IRTool Web APIサーバーからAPI経由でリクエストを受けて音声認識結果を返す。",
+        "software_specification": "APIエンドポイント: /api/v1/register/transcribe_diarize, /api/v1/register/transcribe, /api/v1/check_status/{process_id}, /api/v1/retrieve/{process_id}, /api/v1/health_check, Python, 音声認識エンジン（詳細不明）",
+        "relationship": "IRTool Web APIサーバー -> ローカルAIサーバー（HTTP API）",
+        "notes": "利用可否はhealth_checkで判定。利用不可の場合はAzure Speechサービスへフォールバック。API認証キー・アドレス・ポートは環境変数で指定。"
+      },
+      "Azure Speechサービス": {
+        "component_name": "Azure Speechサービス",
+        "role": "音声ファイルの文字起こし・話者分離をクラウドで実行し、IRTool Web APIサーバーからAPI経由でリクエストを受けて認識結果を返す。",
+        "software_specification": "Azure Speech SDK, ConversationTranscriber, APIキー・リージョン指定, speechsdk, REST API",
+        "relationship": "IRTool Web APIサーバー -> Azure Speechサービス（クラウドAPI）",
+        "notes": "ローカルAIサーバー利用不可時のフォールバック先。APIキー・リージョンは環境変数で管理。"
+      },
+      "Azure OpenAIサービス": {
+        "component_name": "Azure OpenAIサービス",
+        "role": "IRミーティングの話者分類、コメント抽出、QAペア抽出、トピック分類、逐語録修正、QA要約などの自然言語処理を担い、IRTool Web APIサーバーからAPI経由でリクエストを受けてAI応答を返す。",
+        "software_specification": "Azure OpenAI GPT-4, APIエンドポイント, APIキー・モデル名指定, REST API",
+        "relationship": "IRTool Web APIサーバー -> Azure OpenAIサービス（クラウドAPI）",
+        "notes": "APIキー・モデル名は環境変数で管理。トークン使用量の集計あり。"
+      },
+      "AnthropicLLM APIサービス": {
+        "component_name": "AnthropicLLM APIサービス",
+        "role": "想定QA生成・重複排除・グループ化・マージなどの自然言語処理を担い、IRTool Web APIサーバーからAPI経由でリクエストを受けてAI応答を返す。",
+        "software_specification": "AnthropicLLM API, REST API, APIキー指定",
+        "relationship": "IRTool Web APIサーバー -> AnthropicLLM APIサービス（クラウドAPI）",
+        "notes": "expected_QA.py内で利用。APIキーは環境変数で管理。"
+      },
+      "ファイルストレージ（ローカル）": {
+        "component_name": "ファイルストレージ（ローカル）",
+        "role": "議事録データ（comments_and_qa.json）、想定QAデータ（expected_qas.json）、ファイルID管理（file_id.json, QAS_FILEID_JSON_FILE_PATH）、アクセス情報ファイル（access_info_file.sample.json）、アップロードファイル、変換ファイル（.docx, .xlsx）などをローカルファイルとして保存・管理する。",
+        "software_specification": "JSONファイル, docx, xlsx, PDF, mp3, wav, mp4, Python標準ファイルI/O, openpyxl, python-docx, ffmpeg",
+        "relationship": "IRTool Web APIサーバー <-> ファイルストレージ（ローカル）",
+        "notes": "ファイルはコンテナ内/ホストのボリュームに保存。暗号化/復号（pyAesCrypt）によるアクセス情報ファイルの保護あり。"
+      },
+      "Webブラウザ（ユーザー）": {
+        "component_name": "Webブラウザ（ユーザー）",
+        "role": "IRTool Web APIサーバーのHTMLテンプレート（Jinja2）を通じて提供されるUIを操作し、議事録・想定QAのアップロード、表示、ダウンロード、ログインなどを行う。",
+        "software_specification": "HTML5, CSS, JavaScript, Jinja2テンプレート, HTTP(S)",
+        "relationship": "Webブラウザ <-> IRTool Web APIサーバー（HTTP/HTTPS）",
+        "notes": "ファイルアップロード・ダウンロード、セッションIDによる認証、CSRF/XSS等のセキュリティ考慮が必要。"
+      },
+      "Dockerコンテナ基盤": {
+        "component_name": "Dockerコンテナ基盤",
+        "role": "IRTool Web APIサーバーおよび関連ミドルウェア・依存パッケージをコンテナ化し、環境の一貫性・移植性・デプロイ容易性を担保する。",
+        "software_specification": "Docker Engine, Dockerfile, .dockerignore, docker_run.sh, docker_setup.sh, Python 3.10.10, ffmpeg, requirements.txt",
+        "relationship": "Dockerコンテナ基盤上でIRTool Web APIサーバーが稼働。ボリューム・ネットワーク・環境変数を通じて他コンポーネントと連携。",
+        "notes": "ポート8000を公開。ボリュームマウント・ネットワーク設定はdocker_setup.shで自動化。"
+      }
+    }
+  },
+  "use_case_diagram": {
+    "actors": {
+      "human_actors": [
+        "ユーザー"
+      ],
+      "external_system_actors": [
+        "Azure Speechサービス",
+        "ローカルAIサーバー",
+        "AnthropicLLM API",
+        "ファイルシステム"
+      ]
+    },
+    "main_usecases": [
+      {
+        "name": "ログイン認証を行う",
+        "references": [
+          "main.py - get_menu",
+          "main.py - post_login",
+          "templates/login.html",
+          "session_manager.py - SessionManager.login",
+          "session_manager.py - SessionManager.is_verified"
+        ],
+        "description": "ユーザーはログイン画面でユーザー名とパスワードを入力し、ログインボタンを押して認証を行う。認証に成功するとシステムにアクセスでき、失敗した場合はエラーメッセージが表示される。"
+      },
+      {
+        "name": "メニュー画面から機能を選択する",
+        "references": [
+          "templates/menu.html"
+        ],
+        "description": "ユーザーはメニュー画面で『議事録作成』または『想定QA作成』のいずれかの機能ボタンを選択し、該当機能の画面に遷移する。"
+      },
+      {
+        "name": "議事録ファイルをアップロードして議事録を生成する",
+        "references": [
+          "templates/take_minutes.html",
+          "main.py - get_take_minutes",
+          "main.py - get_meeting_summary",
+          "minutesgen/extract_comments_and_qa.py - create_gijiroku_data"
+        ],
+        "description": "ユーザーは『議事録作成』画面で音声または動画ファイル（mp3, wav, mp4）を選択し、アップロードして議事録を生成する。生成後、作成済み議事録の一覧が更新される。"
+      },
+      {
+        "name": "作成済み議事録の一覧を表示・選択する",
+        "references": [
+          "templates/take_minutes.html",
+          "main.py - get_take_minutes"
+        ],
+        "description": "ユーザーは『議事録作成』画面で作成済み議事録の一覧を確認し、ラジオボタンで任意の議事録ファイルを選択できる。"
+      },
+      {
+        "name": "選択した議事録の内容を表示する",
+        "references": [
+          "templates/take_minutes.html",
+          "main.py - get_meeting_summary_result"
+        ],
+        "description": "ユーザーは作成済み議事録一覧からファイルを選択し、『表示』ボタンを押すことで、選択した議事録の詳細内容（コメント・QAなど）を閲覧できる。"
+      },
+      {
+        "name": "議事録ファイルをダウンロードする",
+        "references": [
+          "templates/take_minutes.html",
+          "templates/meeting_summary_result.html",
+          "main.py - download_task_file",
+          "doc_conversion.py - convert_to_docx_data"
+        ],
+        "description": "ユーザーは作成済み議事録一覧または議事録詳細画面から、選択した議事録ファイルをWord形式（.docx）でダウンロードできる。"
+      },
+      {
+        "name": "想定QA用ファイルをアップロードして想定QAを生成する",
+        "references": [
+          "templates/expected_QA.html",
+          "main.py - fetch_expected_qa_list",
+          "main.py - get_expected_QA",
+          "expected_QA.py - create_qa",
+          "expected_QA.py - qa_merge"
+        ],
+        "description": "ユーザーは『想定QA作成』画面で説明資料ファイル（.xlsx, .pdf）を選択し、アップロードして想定QAを生成する。生成後、作成済みQAの一覧が更新される。"
+      },
+      {
+        "name": "作成済み想定QAの一覧を表示・選択する",
+        "references": [
+          "templates/expected_QA.html",
+          "main.py - fetch_expected_qa_list"
+        ],
+        "description": "ユーザーは『想定QA作成』画面で作成済み想定QAの一覧を確認し、ラジオボタンで任意のQAファイルを選択できる。"
+      },
+      {
+        "name": "選択した想定QAの内容を表示する",
+        "references": [
+          "templates/expected_QA.html",
+          "main.py - get_expected_QA_result"
+        ],
+        "description": "ユーザーは作成済み想定QA一覧からファイルを選択し、『表示』ボタンを押すことで、選択した想定QAの詳細内容（カテゴリごとのQAリスト）を閲覧できる。"
+      },
+      {
+        "name": "想定QAファイルをダウンロードする",
+        "references": [
+          "templates/expected_QA.html",
+          "templates/expected_QA_result.html",
+          "main.py - download_task_file",
+          "doc_conversion.py - convert_to_docx_data"
+        ],
+        "description": "ユーザーは作成済み想定QA一覧または想定QA詳細画面から、選択した想定QAファイルをExcel形式（.xlsx）でダウンロードできる。"
+      }
+    ],
+    "sub_usecases": [
+      {
+        "name": "議事録音声の文字起こし・話者分離",
+        "description": "議事録ファイル（音声・動画）アップロード時、Azure SpeechやローカルAIサーバーを用いて音声認識・話者分離を実施し、逐語録データを生成する。これは「議事録ファイルをアップロードして議事録を生成する」の内部プロセスであり、音声データからテキストデータへの変換・話者ごとの発話抽出を担う。",
+        "reasons": "議事録生成の根幹となる複雑な処理であり、外部AIサービスとの連携や話者分離などシステム固有のプロセスが明示されているため。"
+      },
+      {
+        "name": "IR/投資家話者分類",
+        "description": "文字起こし後の発話データに対し、OpenAI GPT-4を用いて各話者が「IR」か「Investor」かを分類する。これは「議事録ファイルをアップロードして議事録を生成する」の一部であり、話者属性の自動判定を行う。",
+        "reasons": "話者分類は議事録の構造化や後続処理（コメント抽出等）に不可欠な複雑プロセスであり、AIによる自動分類が明示されているため。"
+      },
+      {
+        "name": "議事録コメント・フィードバック抽出",
+        "description": "話者分類済みの逐語録データから、LLMを用いて投資家コメントやフィードバックを抽出・分類し、構造化データとして整理する。「議事録ファイルをアップロードして議事録を生成する」の内部処理。",
+        "reasons": "LLMによるコメント抽出・分類はシステム固有の高度な処理であり、議事録の価値を高める重要なプロセスであるため。"
+      },
+      {
+        "name": "議事録Q&Aペア抽出・トピック分類",
+        "description": "逐語録データからQ&Aペアを抽出し、さらに各Q&Aペアの主題（トピック）をLLMで自動分類・付与する。「議事録ファイルをアップロードして議事録を生成する」の一部。",
+        "reasons": "Q&A抽出・トピック分類は議事録の分析・活用に直結する複雑なAI処理であり、システムの特徴的な機能として明示されているため。"
+      },
+      {
+        "name": "議事録Q&Aレポート変換",
+        "description": "抽出されたQ&AペアをAIで要約・レポート形式に変換し、議事録データに付加する。「議事録ファイルをアップロードして議事録を生成する」の内部プロセス。",
+        "reasons": "Q&Aの要約・レポート化はAI活用による高度な付加価値機能であり、システム固有の複雑な処理として明示されているため。"
+      },
+      {
+        "name": "議事録データのWord変換",
+        "description": "作成済み議事録データをWord（.docx）形式に変換し、ダウンロード用バイナリデータを生成する。「議事録ファイルをダウンロードする」の内部処理。",
+        "reasons": "データモデルからWordファイルへの変換はシステム固有の出力処理であり、テンプレートやレイアウト制御など複雑な処理が明示されているため。"
+      },
+      {
+        "name": "想定QA生成（PDF・Excel解析・QA抽出）",
+        "description": "アップロードされた説明資料（PDF・Excel）からLLMを用いてカテゴリごとに想定QAを自動生成し、重複排除・整理を行う。「想定QA用ファイルをアップロードして想定QAを生成する」の内部プロセス。",
+        "reasons": "資料解析・QA自動生成・重複排除はAI活用による複雑な処理であり、システム固有のワークフローとして明示されているため。"
+      },
+      {
+        "name": "想定QAのマージ・統合",
+        "description": "複数の想定QAリストをカテゴリごとにグループ化し、LLMで類似QAのグループ化・マージ・統合を行う。「想定QA用ファイルをアップロードして想定QAを生成する」の一部。",
+        "reasons": "QAのグループ化・マージはAIによる高度な自然言語処理であり、システムの特徴的な複雑プロセスとして明示されているため。"
+      },
+      {
+        "name": "想定QAデータのExcel変換",
+        "description": "作成済み想定QAデータをExcel（.xlsx）形式に変換し、ダウンロード用バイナリデータを生成する。「想定QAファイルをダウンロードする」の内部処理。",
+        "reasons": "データモデルからExcelファイルへの変換はシステム固有の出力処理であり、テーブル構造やスタイル適用など複雑な処理が明示されているため。"
+      },
+      {
+        "name": "アクセス情報の暗号化・復号",
+        "description": "アクセス情報ファイルの保存・認証時に、AES暗号化・復号処理を行う。これは「ログイン認証を行う」の内部プロセス。",
+        "reasons": "セキュリティ要件に基づく暗号化・復号はシステム固有の認証基盤の一部であり、明示的に記載されているため。"
+      },
+      {
+        "name": "セッションID発行・検証",
+        "description": "ログイン認証時にセッションIDを発行し、以降のリクエストで認証状態を検証する。「ログイン認証を行う」の内部プロセス。",
+        "reasons": "セッション管理は認証の根幹であり、システム固有のセッションID発行・検証ロジックが明示されているため。"
+      }
+    ],
+    "relations": [
+      {
+        "src": "ユーザー",
+        "dst": "ログイン認証を行う",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "メニュー画面から機能を選択する",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "議事録ファイルをアップロードして議事録を生成する",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "作成済み議事録の一覧を表示・選択する",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "選択した議事録の内容を表示する",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "議事録ファイルをダウンロードする",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "想定QA用ファイルをアップロードして想定QAを生成する",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "作成済み想定QAの一覧を表示・選択する",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "選択した想定QAの内容を表示する",
+        "type": "association"
+      },
+      {
+        "src": "ユーザー",
+        "dst": "想定QAファイルをダウンロードする",
+        "type": "association"
+      },
+      {
+        "src": "Azure Speechサービス",
+        "dst": "議事録音声の文字起こし・話者分離",
+        "type": "association"
+      },
+      {
+        "src": "ローカルAIサーバー",
+        "dst": "議事録音声の文字起こし・話者分離",
+        "type": "association"
+      },
+      {
+        "src": "AnthropicLLM API",
+        "dst": "想定QA生成（PDF・Excel解析・QA抽出）",
+        "type": "association"
+      },
+      {
+        "src": "AnthropicLLM API",
+        "dst": "想定QAのマージ・統合",
+        "type": "association"
+      },
+      {
+        "src": "ファイルシステム",
+        "dst": "議事録データのWord変換",
+        "type": "association"
+      },
+      {
+        "src": "ファイルシステム",
+        "dst": "想定QAデータのExcel変換",
+        "type": "association"
+      },
+      {
+        "src": "ファイルシステム",
+        "dst": "アクセス情報の暗号化・復号",
+        "type": "association"
+      },
+      {
+        "src": "ログイン認証を行う",
+        "dst": "アクセス情報の暗号化・復号",
+        "type": "includes"
+      },
+      {
+        "src": "ログイン認証を行う",
+        "dst": "セッションID発行・検証",
+        "type": "includes"
+      },
+      {
+        "src": "議事録ファイルをアップロードして議事録を生成する",
+        "dst": "議事録音声の文字起こし・話者分離",
+        "type": "includes"
+      },
+      {
+        "src": "議事録ファイルをアップロードして議事録を生成する",
+        "dst": "IR/投資家話者分類",
+        "type": "includes"
+      },
+      {
+        "src": "議事録ファイルをアップロードして議事録を生成する",
+        "dst": "議事録コメント・フィードバック抽出",
+        "type": "includes"
+      },
+      {
+        "src": "議事録ファイルをアップロードして議事録を生成する",
+        "dst": "議事録Q&Aペア抽出・トピック分類",
+        "type": "includes"
+      },
+      {
+        "src": "議事録ファイルをアップロードして議事録を生成する",
+        "dst": "議事録Q&Aレポート変換",
+        "type": "includes"
+      },
+      {
+        "src": "議事録ファイルをダウンロードする",
+        "dst": "議事録データのWord変換",
+        "type": "includes"
+      },
+      {
+        "src": "想定QA用ファイルをアップロードして想定QAを生成する",
+        "dst": "想定QA生成（PDF・Excel解析・QA抽出）",
+        "type": "includes"
+      },
+      {
+        "src": "想定QA用ファイルをアップロードして想定QAを生成する",
+        "dst": "想定QAのマージ・統合",
+        "type": "includes"
+      },
+      {
+        "src": "想定QAファイルをダウンロードする",
+        "dst": "想定QAデータのExcel変換",
+        "type": "includes"
+      }
+    ],
+    "sub_systems": [
+      {
+        "name": "認証・ナビゲーション",
+        "description": "ユーザーのシステム利用開始時の認証と、主要機能へのナビゲーションを担う領域。ログイン認証とメニュー画面での機能選択を含む。",
+        "usecases": [
+          "ログイン認証を行う",
+          "メニュー画面から機能を選択する"
+        ],
+        "sub_systems": []
+      },
+      {
+        "name": "議事録管理",
+        "description": "議事録ファイルのアップロード、生成、一覧表示、内容表示、ダウンロードまでの一連の業務フローを扱う領域。",
+        "usecases": [],
+        "sub_systems": [
+          {
+            "name": "議事録生成",
+            "description": "議事録ファイルのアップロードと議事録データの生成処理を担当。",
+            "usecases": [
+              "議事録ファイルをアップロードして議事録を生成する"
+            ],
+            "sub_systems": []
+          },
+          {
+            "name": "議事録一覧・選択",
+            "description": "作成済み議事録の一覧表示と、ユーザーによるファイル選択操作を担当。",
+            "usecases": [
+              "作成済み議事録の一覧を表示・選択する"
+            ],
+            "sub_systems": []
+          },
+          {
+            "name": "議事録内容表示",
+            "description": "選択された議事録ファイルの詳細内容（コメント・QA等）の表示を担当。",
+            "usecases": [
+              "選択した議事録の内容を表示する"
+            ],
+            "sub_systems": []
+          },
+          {
+            "name": "議事録ダウンロード",
+            "description": "作成済み議事録ファイルのWord形式（.docx）でのダウンロード機能を担当。",
+            "usecases": [
+              "議事録ファイルをダウンロードする"
+            ],
+            "sub_systems": []
+          }
+        ]
+      },
+      {
+        "name": "想定QA管理",
+        "description": "想定QA用ファイルのアップロード、QA生成、一覧表示、内容表示、ダウンロードまでの一連の業務フローを扱う領域。",
+        "usecases": [],
+        "sub_systems": [
+          {
+            "name": "想定QA生成",
+            "description": "説明資料ファイルのアップロードと想定QAデータの生成処理を担当。",
+            "usecases": [
+              "想定QA用ファイルをアップロードして想定QAを生成する"
+            ],
+            "sub_systems": []
+          },
+          {
+            "name": "想定QA一覧・選択",
+            "description": "作成済み想定QAの一覧表示と、ユーザーによるファイル選択操作を担当。",
+            "usecases": [
+              "作成済み想定QAの一覧を表示・選択する"
+            ],
+            "sub_systems": []
+          },
+          {
+            "name": "想定QA内容表示",
+            "description": "選択された想定QAファイルの詳細内容（カテゴリごとのQAリスト）の表示を担当。",
+            "usecases": [
+              "選択した想定QAの内容を表示する"
+            ],
+            "sub_systems": []
+          },
+          {
+            "name": "想定QAダウンロード",
+            "description": "作成済み想定QAファイルのExcel形式（.xlsx）でのダウンロード機能を担当。",
+            "usecases": [
+              "想定QAファイルをダウンロードする"
+            ],
+            "sub_systems": []
+          }
+        ]
+      }
+    ]
+  },
+  "activity_diagrams": {
+    "diagrams": [
+      {
+        "use_case_name": "ログイン認証を行う",
+        "diagram": [
+          "#ログイン認証を行う",
+          "@startuml",
+          "|ユーザー|",
+          "start",
+          ":ログイン画面にアクセス;",
+          ":ユーザー名とパスワードを入力;",
+          ":「ログイン」ボタンをクリック;",
+          "",
+          "|システム（Webサーバー）|",
+          ":入力値を受け取る;",
+          ":入力値のバリデーション;",
+          "if (ユーザー名またはパスワードが未入力?) then (はい)",
+          "  :エラーメッセージを生成;",
+          "  :ログイン画面にエラーを表示;",
+          "  stop",
+          "else (いいえ)",
+          "  :認証処理を実行;",
+          "  :アクセス情報の検証;",
+          "  :セッションID発行・検証;",
+          "  note right",
+          "    別のアクティビティ図を参照",
+          "  end note",
+          "  if (認証成功?) then (はい)",
+          "    :セッションIDを発行し、クッキーにセット;",
+          "    :メニュー画面または元の画面にリダイレクト;",
+          "    stop",
+          "  else (いいえ)",
+          "    :エラーメッセージを生成;",
+          "    :ログイン画面にエラーを表示;",
+          "    stop",
+          "  endif",
+          "endif",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "アクセス情報の暗号化・復号",
+        "diagram": [
+          "#アクセス情報の暗号化・復号",
+          "@startuml",
+          "|システム管理者|",
+          "start",
+          ":アクセス情報ファイルを準備;",
+          "",
+          "|システム（サーバー）|",
+          ":暗号化処理を要求;",
+          ":環境変数から暗号化キーを取得;",
+          ":アクセス情報ファイルをバイナリで読み込み;",
+          ":バイト列データを暗号化;",
+          ":暗号化済みデータをファイルに保存;",
+          "",
+          ":復号処理を要求;",
+          ":環境変数から暗号化キーを取得;",
+          ":暗号化済みファイルをバイナリで読み込み;",
+          ":バイト列データを復号;",
+          ":復号したデータをJSONとしてパース;",
+          ":アクセス情報として利用;",
+          "",
+          "stop",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "セッションID発行・検証",
+        "diagram": [
+          "#セッションID発行・検証",
+          "@startuml",
+          "|システム（Webサーバー）|",
+          "start",
+          ":認証要求を受け取る;",
+          ":アクセス情報の検証を実行;",
+          "if (認証成功?) then (はい)",
+          "  :新規セッションIDを生成;",
+          "  :セッション情報（ユーザー名・認証状態）を記録;",
+          "  :セッションIDをクッキーにセット;",
+          "  :認証済みとして処理を継続;",
+          "  stop",
+          "else (いいえ)",
+          "  :認証失敗としてエラーを返却;",
+          "  stop",
+          "endif",
+          "",
+          ":リクエストごとにセッションIDを検証;",
+          "if (セッションIDが有効?) then (はい)",
+          "  :認証状態を確認;",
+          "  if (認証済み?) then (はい)",
+          "    :リクエストを許可;",
+          "  else (いいえ)",
+          "    :ログイン画面にリダイレクト;",
+          "  endif",
+          "else (いいえ)",
+          "  :ログイン画面にリダイレクト;",
+          "endif",
+          "stop",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "メニュー画面から機能を選択する",
+        "diagram": [
+          "#メニュー画面から機能を選択する",
+          "@startuml",
+          "|ユーザー|",
+          "start",
+          ":アプリケーションのメニュー画面を開く;",
+          "",
+          "|Webブラウザ|",
+          ":メニュー画面のHTMLを表示;",
+          ":「議事録作成」ボタンと「想定QA作成」ボタンを表示;",
+          "",
+          "|ユーザー|",
+          ":「議事録作成」または「想定QA作成」ボタンをクリック;",
+          "",
+          "|Webブラウザ|",
+          "if (どちらのボタンが押されたか?) then (議事録作成)",
+          "  :「議事録作成」画面への遷移リクエストをサーバーに送信;",
+          "  |システム（サーバー）|",
+          "  :「議事録作成」画面のHTMLを生成;",
+          "  :レスポンスとしてHTMLを返却;",
+          "  |Webブラウザ|",
+          "  :「議事録作成」画面を表示;",
+          "elseif (想定QA作成)",
+          "  :「想定QA作成」画面への遷移リクエストをサーバーに送信;",
+          "  |システム（サーバー）|",
+          "  :「想定QA作成」画面のHTMLを生成;",
+          "  :レスポンスとしてHTMLを返却;",
+          "  |Webブラウザ|",
+          "  :「想定QA作成」画面を表示;",
+          "endif",
+          "",
+          "|Webブラウザ|",
+          "if (ネットワークエラーや認証切れなどのエラー発生?) then (はい)",
+          "  :エラーメッセージを表示;",
+          "  |ユーザー|",
+          "  :エラー内容を確認;",
+          "endif",
+          "",
+          "stop",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "議事録音声の文字起こし・話者分離",
+        "diagram": [
+          "#議事録音声の文字起こし・話者分離",
+          "@startuml",
+          "|ユーザー|",
+          ":音声または動画ファイルをアップロードする;",
+          "|システム|",
+          ":ファイル形式を判定する;",
+          "if (動画ファイルか?) then (はい)",
+          "  :動画ファイルから音声トラックを抽出する;",
+          "else (いいえ)",
+          "  :音声ファイルをそのまま利用する;",
+          "endif",
+          ":ローカルAIサーバーの稼働状況を確認する;",
+          "if (ローカルAIサーバーが利用可能か?) then (はい)",
+          "  :音声データをローカルAIサーバーに送信し、文字起こし・話者分離を依頼する;",
+          "  :処理IDを受け取り、進捗状況をポーリングする;",
+          "  repeat",
+          "    :処理状態を確認する;",
+          "  repeat while (処理が完了していない)",
+          "  if (処理成功?) then (はい)",
+          "    :認識結果（話者ごとの発話データ）を取得する;",
+          "  else (いいえ)",
+          "    :エラー内容を取得し、ユーザーに通知する;",
+          "    stop",
+          "  endif",
+          "else (いいえ)",
+          "  :Azure SpeechサービスのAPIキー・リージョン情報を取得する;",
+          "  :音声データをAzure Speechサービスに送信し、文字起こし・話者分離を依頼する;",
+          "  if (処理成功?) then (はい)",
+          "    :認識結果（話者ごとの発話データ）を取得する;",
+          "  else (いいえ)",
+          "    :エラー内容を取得し、ユーザーに通知する;",
+          "    stop",
+          "  endif",
+          "endif",
+          ":話者ごとの発話データを標準フォーマットに変換する;",
+          ":短い発話や連続話者の発話を結合し、クリーンな会話データリストに整形する;",
+          ":整形済みの会話データを次の処理へ渡す;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "IR/投資家話者分類",
+        "diagram": [
+          "#IR/投資家話者分類",
+          "@startuml",
+          "|システム|",
+          ":話者ごとの発話データを集約する;",
+          ":各話者の発話内容をまとめる;",
+          ":分類ルール（IR/投資家）を準備する;",
+          ":外部LLMサービス（GPT-4等）に話者ごとの発話内容と分類ルールを送信する;",
+          "|外部LLMサービス|",
+          ":各話者が「IR」か「投資家」かを判定し、分類結果を返却する;",
+          "|システム|",
+          ":分類結果（話者ID→分類）を受け取る;",
+          ":分類結果を会話データに付与する;",
+          ":分類済み会話データを次の処理へ渡す;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "議事録ファイルをアップロードして議事録を生成する",
+        "diagram": [
+          "#議事録ファイルをアップロードして議事録を生成する",
+          "@startuml",
+          "|ユーザー|",
+          ":議事録作成画面で音声または動画ファイルを選択する;",
+          ":「作成」ボタンを押す;",
+          "|システム|",
+          ":ファイルが選択されているか確認する;",
+          "if (ファイル未選択?) then (はい)",
+          "  :アラートを表示し、処理を中断する;",
+          "  stop",
+          "else (いいえ)",
+          "  :ファイルをサーバーにアップロードする;",
+          "endif",
+          ":ファイルを保存し、ファイルID・ファイル名・日時を記録する;",
+          ":議事録音声の文字起こし・話者分離;",
+          "note right",
+          "  別のアクティビティ図を参照",
+          "end note",
+          ":IR/投資家話者分類;",
+          "note right",
+          "  別のアクティビティ図を参照",
+          "end note",
+          ":議事録コメント・フィードバック抽出;",
+          "note right",
+          "  別のアクティビティ図を参照",
+          "end note",
+          ":議事録Q&Aペア抽出・トピック分類;",
+          "note right",
+          "  別のアクティビティ図を参照",
+          "end note",
+          ":議事録Q&Aレポート変換;",
+          "note right",
+          "  別のアクティビティ図を参照",
+          "end note",
+          ":コメント・QAデータを構造化し、保存する;",
+          ":議事録ファイル一覧を更新する;",
+          ":議事録生成結果画面を表示する;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "議事録Q&Aレポート変換",
+        "diagram": [
+          "#議事録Q&Aレポート変換",
+          "@startuml",
+          "|システム|",
+          ":Q&Aペアリストを受け取る;",
+          "if (Q&Aペアリストが空?) then (はい)",
+          "  :空リストを返却する;",
+          "  stop",
+          "endif",
+          ":各Q&Aペアについて繰り返す;",
+          "repeat",
+          "  :質問文と回答文を外部LLMサービスに送信し、要約・整形を依頼する;",
+          "  |外部LLMサービス|",
+          "  :質問・回答をレポート形式に要約し、結果を返却する;",
+          "  |システム|",
+          "  :要約結果（質問レポート・回答レポート）を元のQ&Aペアに追加する;",
+          "repeat while (未処理のQ&Aペアがある)",
+          ":全Q&Aペアに要約結果を付与したリストを返却する;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "議事録コメント・フィードバック抽出",
+        "diagram": [
+          "#議事録コメント・フィードバック抽出",
+          "@startuml",
+          "|システム|",
+          ":逐語録データと話者分類情報を受け取る;",
+          ":発言データを40件ごとに分割する;",
+          "repeat",
+          "  :分割した発言データを外部LLMサービスに送信し、コメント・フィードバックの抽出と分類を依頼する;",
+          "  |外部LLMサービス|",
+          "  :発言内容からトピック、クラス、カテゴリ、内容を抽出し、JSON形式で返却する;",
+          "  |システム|",
+          "  :抽出結果をパースし、リスト化する;",
+          "  :話者IDと発言内容を分類し、IR担当者と投資家の発言を区別する;",
+          "repeat while (未処理の発言データがある)",
+          ":全抽出コメント・フィードバックを統合し、構造化データとして返却する;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "議事録Q&Aペア抽出・トピック分類",
+        "diagram": [
+          "#議事録Q&Aペア抽出・トピック分類",
+          "@startuml",
+          "|システム|",
+          ":逐語録データと話者分類情報を受け取る;",
+          ":発話者ごとに発話をまとめる;",
+          ":20発話ごとにバッチ化する;",
+          "repeat",
+          "  :バッチ化した会話テキストを外部LLMサービスに送信し、Q&Aペアを抽出する;",
+          "  |外部LLMサービス|",
+          "  :会話テキストからQ&Aペアを抽出し、JSON形式で返却する;",
+          "  |システム|",
+          "  :抽出結果をパースし、リスト化する;",
+          "repeat while (未処理の発話がある)",
+          ":全Q&Aペアを統合する;",
+          ":各Q&Aペアについて繰り返す;",
+          "repeat",
+          "  :質問・回答を外部LLMサービスに送信し、IR視点で重要なトピックを抽出する;",
+          "  |外部LLMサービス|",
+          "  :トピックを判定し、結果を返却する;",
+          "  |システム|",
+          "  :Q&Aペアにトピック情報を付与する;",
+          "repeat while (未処理のQ&Aペアがある)",
+          ":トピック分類済みQ&Aペアリストを返却する;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "作成済み議事録の一覧を表示・選択する",
+        "diagram": [
+          "#作成済み議事録の一覧を表示・選択する",
+          "@startuml",
+          "|ユーザー|",
+          ":議事録作成画面にアクセス;",
+          "",
+          "|Web画面|",
+          ":サーバーに議事録一覧データのリクエストを送信;",
+          "",
+          "|サーバーサイド|",
+          ":議事録一覧データの取得処理を開始;",
+          "if (議事録一覧ファイルが存在するか?) then (存在する)",
+          "  :ファイルシステムから議事録一覧データを読み込む;",
+          "else (存在しない)",
+          "  :空の議事録一覧データを初期化;",
+          "endif",
+          "if (データ取得に成功?) then (成功)",
+          "  :議事録一覧データをWeb画面に返却;",
+          "else (失敗)",
+          "  :エラーメッセージをWeb画面に返却;",
+          "endif",
+          "",
+          "|Web画面|",
+          "if (エラーメッセージを受信?) then (はい)",
+          "  :エラー内容を画面に表示;",
+          "  stop",
+          "else (いいえ)",
+          "  :議事録一覧をテーブル形式で画面に表示;",
+          "endif",
+          "",
+          ":ユーザーの操作を待機;",
+          "",
+          "|ユーザー|",
+          ":ラジオボタンで任意の議事録ファイルを選択;",
+          "",
+          "|Web画面|",
+          ":選択した行をハイライト表示;",
+          ":選択状態を内部で保持;",
+          "",
+          "|ユーザー|",
+          ":次の操作（表示・ダウンロード等）を選択;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "選択した議事録の内容を表示する",
+        "diagram": [
+          "#選択した議事録の内容を表示する",
+          "@startuml",
+          "|ユーザー|",
+          ":議事録一覧画面を表示する;",
+          ":表示したい議事録ファイルを選択する;",
+          ":「表示」ボタンを押す;",
+          "",
+          "|Webサーバー|",
+          "if (ファイルが選択されているか?) then (はい)",
+          "  :選択されたファイルIDを受け取る;",
+          "  |ファイルシステム|",
+          "  :指定されたファイルIDの議事録データファイルを検索する;",
+          "  if (ファイルが存在するか?) then (はい)",
+          "    :議事録データファイルを読み込む;",
+          "    |Webサーバー|",
+          "    :議事録データをパースし、コメント・QAデータを整形する;",
+          "    :ファイルID・ファイル名・コメント・QAデータをテンプレートに埋め込む;",
+          "    :議事録詳細画面を生成し、ユーザーに返す;",
+          "    |ユーザー|",
+          "    :議事録詳細画面を閲覧する;",
+          "  else (いいえ)",
+          "    |Webサーバー|",
+          "    :エラーメッセージ（「ファイルが存在しません」等）を生成する;",
+          "    :エラーメッセージをユーザーに返す;",
+          "    |ユーザー|",
+          "    :エラーメッセージを確認する;",
+          "  endif",
+          "else (いいえ)",
+          "  |Webサーバー|",
+          "  :エラーメッセージ（「ファイルが選択されていません」等）を生成する;",
+          "  :エラーメッセージをユーザーに返す;",
+          "  |ユーザー|",
+          "  :エラーメッセージを確認する;",
+          "endif",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "議事録ファイルをダウンロードする",
+        "diagram": [
+          "#議事録ファイルをダウンロードする",
+          "@startuml",
+          "|ユーザー|",
+          ":議事録ダウンロードボタンをクリック;",
+          "",
+          "|Webアプリケーション|",
+          ":リクエストからファイルIDを取得;",
+          ":ファイルIDに対応する議事録データファイルの存在を確認;",
+          "if (ファイルが存在するか?) then (存在する)",
+          "  :議事録データファイルを読み込み;",
+          "  :議事録データを構造化データモデルに変換;",
+          "  :議事録データのWord変換を実行;",
+          "  note right",
+          "    別のアクティビティ図を参照",
+          "  end note",
+          "  :Wordファイルのバイナリデータを生成;",
+          "  |ファイルシステム|",
+          "  :ダウンロード用レスポンスを作成し、ユーザーに返却;",
+          "  |ユーザー|",
+          "  :Wordファイルのダウンロードが開始;",
+          "else (存在しない)",
+          "  :エラーレスポンスを返却;",
+          "  |ユーザー|",
+          "  :エラーメッセージを表示;",
+          "endif",
+          "@enduml",
+          ""
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "議事録データのWord変換",
+        "diagram": [
+          "#議事録データのWord変換",
+          "@startuml",
+          "|データ変換処理|",
+          ":入力データが議事録データ型か判定;",
+          "if (議事録データ型?) then (はい)",
+          "  :新規Word文書オブジェクトを作成;",
+          "  :ファイル名、音声長、作成日などの基本情報を文書に追加;",
+          "  :フィードバックセクションを作成;",
+          "  if (フィードバックが存在するか?) then (存在する)",
+          "    :各フィードバックコメントをリスト形式で追加;",
+          "  else (存在しない)",
+          "    :「なし」と記載;",
+          "  endif",
+          "  :ポジティブコメントセクションを作成;",
+          "  if (ポジティブコメントが存在するか?) then (存在する)",
+          "    :各コメントをリスト形式で追加;",
+          "  else (存在しない)",
+          "    :「なし」と記載;",
+          "  endif",
+          "  :ネガティブコメントセクションを作成;",
+          "  if (ネガティブコメントが存在するか?) then (存在する)",
+          "    :各コメントをリスト形式で追加;",
+          "  else (存在しない)",
+          "    :「なし」と記載;",
+          "  endif",
+          "  :Q&Aセクションを作成;",
+          "  if (Q&Aが存在するか?) then (存在する)",
+          "    :各Q&Aペアを「質問」「回答」としてリスト形式で追加;",
+          "    :Q&Aごとに区切り線を挿入;",
+          "  else (存在しない)",
+          "    :「なし」と記載;",
+          "  endif",
+          "  :Word文書をバイナリデータとして出力;",
+          "else (いいえ)",
+          "  :エラーを返却;",
+          "endif",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "想定QAのマージ・統合",
+        "diagram": [
+          "#想定QAのマージ・統合",
+          "@startuml",
+          "|ユーザー|",
+          ":複数の想定QAデータの統合を要求する;",
+          "",
+          "|システム|",
+          ":複数の想定QAデータを受け取る;",
+          ":全QAデータをカテゴリ・サブカテゴリ・質問・回答ごとに平坦化し一覧化する;",
+          ":QAデータをカテゴリごとにグループ化する;",
+          "",
+          ":各カテゴリ内で重複・類似する質問グループを抽出する;",
+          "|外部サービス|",
+          ":自然言語処理APIにQAリストを送信し、重複・類似グループを判定してもらう;",
+          "|システム|",
+          ":APIからのグループ情報を受け取る;",
+          "",
+          ":各グループごとに統合処理を行う;",
+          "|外部サービス|",
+          ":自然言語処理APIにグループQAを送信し、統合質問・回答を生成してもらう;",
+          "|システム|",
+          ":APIから統合結果を受け取る;",
+          ":統合後のQAをカテゴリごとに再構成する;",
+          "",
+          ":全カテゴリの統合QAリストを作成する;",
+          ":統合結果をユーザーまたは後続処理に返却する;",
+          "",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "想定QA生成（PDF・Excel解析・QA抽出）",
+        "diagram": [
+          "#想定QA生成（PDF・Excel解析・QA抽出）",
+          "@startuml",
+          "|ユーザー|",
+          ":想定QA生成のためのファイル（PDFまたはExcel）をアップロードする;",
+          "",
+          "|システム|",
+          ":アップロードされたファイルを受け取る;",
+          ":ファイル形式を判定する;",
+          "if (PDFファイルか?) then (はい)",
+          "  :PDFファイルを読み込む;",
+          "  :PDF内容をテキストとして抽出する;",
+          "elseif (Excelファイルか?) then (はい)",
+          "  :Excelファイルを読み込む;",
+          "  :Excel内容をテキストまたは構造化データとして抽出する;",
+          "else",
+          "  :不正なファイル形式エラーを返却する;",
+          "  stop",
+          "endif",
+          "",
+          ":カテゴリごとにQA生成処理を行う;",
+          "repeat",
+          "  :カテゴリを1つ選択;",
+          "  |外部サービス|",
+          "  :自然言語処理APIにカテゴリとファイル内容を送信し、QAリストを生成してもらう;",
+          "  |システム|",
+          "  :APIからカテゴリごとのQAリストを受け取る;",
+          "repeat while (全カテゴリ分繰り返す)",
+          "",
+          ":カテゴリごとのQAリストを統合する;",
+          ":重複する質問がないか判定する;",
+          "|外部サービス|",
+          ":自然言語処理APIにQAリストとファイル内容を送信し、重複質問を判定・削除してもらう;",
+          "|システム|",
+          ":APIから重複排除済みQAリストを受け取る;",
+          "",
+          ":カテゴリごとにQAリストをまとめる;",
+          ":想定QAデータとして保存または後続処理に渡す;",
+          "",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "想定QA用ファイルをアップロードして想定QAを生成する",
+        "diagram": [
+          "#想定QA用ファイルをアップロードして想定QAを生成する",
+          "@startuml",
+          "|ユーザー|",
+          ":想定QA作成画面を開く;",
+          ":「ファイル選択」ボタンでローカルファイル（PDFまたはExcel）を選択する;",
+          ":「作成」ボタンを押す;",
+          "",
+          "|システム|",
+          ":ファイルが選択されているか判定する;",
+          "if (ファイル未選択?) then (はい)",
+          "  :アラートを表示し処理を中断する;",
+          "  stop",
+          "endif",
+          "",
+          ":ファイルをサーバーにアップロードする;",
+          ":ファイルを保存し、ファイル情報を管理する;",
+          ":想定QA生成処理を呼び出す;",
+          ":想定QA生成（PDF・Excel解析・QA抽出）;",
+          "note right",
+          "  別のアクティビティ図を参照",
+          "end note",
+          "",
+          ":生成された想定QAデータを保存する;",
+          ":作成済み想定QA一覧を更新する;",
+          ":ユーザーに作成完了・一覧更新を通知する;",
+          "",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "作成済み想定QAの一覧を表示・選択する",
+        "diagram": [
+          "#作成済み想定QAの一覧を表示・選択する",
+          "@startuml",
+          "|ユーザー操作|",
+          ":「想定QA作成」画面を開く;",
+          "",
+          "|Webアプリケーション（サーバー側）|",
+          ":想定QAファイル管理ディレクトリの存在を確認;",
+          "if (ディレクトリが存在しない) then (存在しない)",
+          "  :ディレクトリを新規作成;",
+          "endif",
+          ":想定QAファイルID・ファイル名一覧を管理ファイルから読み込む;",
+          "if (管理ファイルが存在しない) then (存在しない)",
+          "  :管理ファイルを初期化（空リストで作成）;",
+          "endif",
+          ":想定QAファイル一覧データを生成;",
+          ":一覧データを画面に返却;",
+          "",
+          "|ユーザー操作|",
+          ":一覧テーブルが画面に表示される;",
+          ":ラジオボタンで任意の想定QAファイルを選択;",
+          "if (ファイルを選択しないまま操作) then (未選択)",
+          "  :「表示」や「ダウンロード」ボタン押下時にアラートを表示;",
+          "  stop",
+          "else (選択済み)",
+          "  :選択したファイルがハイライトされる;",
+          "endif",
+          "",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "選択した想定QAの内容を表示する",
+        "diagram": [
+          "#選択した想定QAの内容を表示する",
+          "@startuml",
+          "|ユーザー|",
+          "start",
+          ":想定QA一覧画面を閲覧;",
+          ":表示したい想定QAファイルを選択;",
+          ":「表示」ボタンを押す;",
+          "",
+          "|Web画面（クライアント）|",
+          "if (ファイルが選択されているか?) then (はい)",
+          "  :選択したファイルIDをサーバーに送信;",
+          "else (いいえ)",
+          "  :アラートで「ファイルを選択してください」と表示;",
+          "  stop",
+          "endif",
+          "",
+          "|サーバー処理|",
+          ":受信したファイルIDをもとにデータ取得処理を開始;",
+          "",
+          "|ファイルシステム|",
+          ":指定されたファイルIDの想定QAデータファイルを検索;",
+          "",
+          "if (ファイルが存在するか?) then (はい)",
+          "  :想定QAデータファイルを読み込む;",
+          "else (いいえ)",
+          "  |サーバー処理|",
+          "  :エラーメッセージを生成;",
+          "  |Web画面（クライアント）|",
+          "  :エラーメッセージを受信し、アラート表示;",
+          "  stop",
+          "endif",
+          "",
+          "|サーバー処理|",
+          ":読み込んだデータをカテゴリごとにグループ化・整形;",
+          ":ファイル名・ファイルID・整形済みQAデータを画面用データとして生成;",
+          "",
+          "|Web画面（クライアント）|",
+          ":サーバーから受け取ったデータをもとに想定QA詳細画面を描画;",
+          ":カテゴリごとのQAリストを表示;",
+          "",
+          "|ユーザー|",
+          ":想定QAの内容を閲覧;",
+          "stop",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "想定QAデータのExcel変換",
+        "diagram": [
+          "#想定QAデータのExcel変換",
+          "@startuml",
+          "|データ変換処理|",
+          ":想定QAデータ（カテゴリ・サブカテゴリ・質問・回答リスト）を受け取る;",
+          ":Excelワークブックを新規作成;",
+          ":テーブルのヘッダー行（大分類・小分類・想定質問・推奨回答）を追加;",
+          "",
+          ":カテゴリごとにループ開始;",
+          "  :サブカテゴリごとにループ開始;",
+          "    :QAアイテムごとにループ開始;",
+          "      :「大分類」「小分類」「想定質問」「推奨回答」を1行に展開;",
+          "      :複数回答がある場合は「・」区切りで1セルにまとめる;",
+          "      :行をExcelシートに追加;",
+          "    :ループ終了;",
+          "  :ループ終了;",
+          ":ループ終了;",
+          "",
+          ":テーブルスタイル（例: TableStyleMedium9）を適用;",
+          ":Excelワークブックをバイナリデータとして出力;",
+          ":バイナリデータを呼び出し元に返却;",
+          "@enduml"
+        ],
+        "file_id": null
+      },
+      {
+        "use_case_name": "想定QAファイルをダウンロードする",
+        "diagram": [
+          "#想定QAファイルをダウンロードする",
+          "@startuml",
+          "|ユーザー|",
+          ":ダウンロードボタンをクリック;",
+          "",
+          "|Webサーバー|",
+          ":リクエストを受信;",
+          ":リクエストからファイルIDを取得;",
+          "",
+          "|ファイルシステム|",
+          ":指定されたファイルIDの想定QAデータファイルを読み込む;",
+          "if (ファイルが存在しない) then (はい)",
+          "  |Webサーバー|",
+          "  :エラーレスポンスを返却;",
+          "  stop",
+          "endif",
+          "",
+          "|Webサーバー|",
+          ":想定QAデータを検証;",
+          "if (データが不正) then (はい)",
+          "  :エラーレスポンスを返却;",
+          "  stop",
+          "endif",
+          "",
+          ":想定QAデータのExcel変換;",
+          "note right",
+          "  別のアクティビティ図を参照",
+          "end note",
+          "",
+          "|Webサーバー|",
+          ":ExcelバイナリデータをHTTPレスポンスとして送信;",
+          ":適切なMIMEタイプとファイル名を設定;",
+          "",
+          "|ユーザー|",
+          ":Excelファイル（.xlsx）をダウンロード;",
+          "@enduml"
+        ],
+        "file_id": null
+      }
+    ]
+  },
+  "screen_transition_diagram": {
+    "screen_dict": {
+      "ログイン画面": [
+        "/login",
+        "/login",
+        "login.html"
+      ],
+      "議事録作成画面": [
+        "/meeting-minutes",
+        "/meeting-minutes/generated-content",
+        "/meeting-minutes/generated-content/{file_id}",
+        "/api/v1/download/meeting-minutes/{file_id}",
+        "take_minutes.html"
+      ],
+      "議事録作成結果画面": [
+        "/meeting-minutes/generated-content/{file_id}",
+        "/api/v1/download/meeting-minutes/{file_id}",
+        "meeting_summary_result.html"
+      ],
+      "想定QA作成画面": [
+        "/expected-QA",
+        "/expected-QA/generated-content",
+        "/expected-QA/generated-content/{file_id}",
+        "/api/v1/download/expected-qa/{file_id}",
+        "expected_QA.html"
+      ],
+      "想定QA結果画面": [
+        "/expected-QA/generated-content/{file_id}",
+        "/api/v1/download/expected-qa/{file_id}",
+        "expected_QA_result.html"
+      ]
+    },
+    "screen_flow_diagram": [
+      "",
+      "```plantuml",
+      "@startuml",
+      "top to bottom direction",
+      "!define RECTANGLE class",
+      "",
+      "RECTANGLE ログイン画面 as Login",
+      "RECTANGLE 議事録作成画面 as TakeMinutes",
+      "RECTANGLE 議事録作成結果画面 as MeetingSummaryResult",
+      "RECTANGLE 想定QA作成画面 as ExpectedQA",
+      "RECTANGLE 想定QA結果画面 as ExpectedQAResult",
+      "",
+      "' ログイン画面から議事録作成画面への遷移",
+      "Login --> TakeMinutes : ログイン成功時\\n「議事録作成」ボタン",
+      "",
+      "' ログイン画面から想定QA作成画面への遷移",
+      "Login --> ExpectedQA : ログイン成功時\\n「想定QA作成」ボタン",
+      "",
+      "' 議事録作成画面から議事録作成結果画面への遷移",
+      "TakeMinutes --> MeetingSummaryResult : ファイルアップロード・作成ボタン",
+      "",
+      "' 議事録作成画面から議事録作成結果画面への遷移（一覧から選択・表示ボタン）",
+      "TakeMinutes --> MeetingSummaryResult : 作成済み議事録選択\\n「表示」ボタン",
+      "",
+      "' 議事録作成結果画面から議事録作成画面への遷移（戻るボタン）",
+      "MeetingSummaryResult --> TakeMinutes : 「戻る」ボタン",
+      "",
+      "' 想定QA作成画面から想定QA結果画面への遷移",
+      "ExpectedQA --> ExpectedQAResult : ファイルアップロード・作成ボタン",
+      "",
+      "' 想定QA作成画面から想定QA結果画面への遷移（一覧から選択・表示ボタン）",
+      "ExpectedQA --> ExpectedQAResult : 作成済みQA選択\\n「表示」ボタン",
+      "",
+      "' 想定QA結果画面から想定QA作成画面への遷移（戻るボタン）",
+      "ExpectedQAResult --> ExpectedQA : 「戻る」ボタン",
+      "",
+      "@enduml",
+      "```"
+    ],
+    "annotations": [
+      "---",
+      "【ログイン画面（/login, login.html）】",
+      "",
+      "- ユーザーがログイン画面にアクセスしたときに表示される。",
+      "- ユーザーがユーザー名とパスワードを入力し、「ログイン」ボタンを押下したとき、/login（POST）へ遷移する。",
+      "- 認証に失敗した場合、同画面にエラーメッセージを表示して再表示される。",
+      "- システム側で未認証状態またはセッションタイムアウト時、任意画面へのアクセス要求時に/loginへリダイレクトされる。",
+      "",
+      "---",
+      "【議事録作成画面（/meeting-minutes, /meeting-minutes/generated-content, /meeting-minutes/generated-content/{file_id}, /api/v1/download/meeting-minutes/{file_id}, take_minutes.html）】",
+      "",
+      "- ユーザーがメニュー画面で「議事録作成」ボタンを押下したとき、/meeting-minutesへ遷移する。",
+      "- ユーザーが「ファイル選択」ボタンを押し、音声・動画ファイル（mp3, wav, mp4）を選択したとき、選択ファイル名が表示される。",
+      "- ユーザーが「作成」ボタンを押下し、ファイルが選択されている場合、/meeting-minutes/generated-contentへPOST送信され、議事録生成処理が開始される。",
+      "- ファイル未選択で「作成」ボタンを押下した場合、アラートを表示し遷移しない。",
+      "- 議事録生成後、作成済み議事録一覧が画面に表示される。",
+      "- ユーザーが一覧から議事録をラジオボタンで選択したとき、選択行がハイライトされる。",
+      "- ユーザーが「表示」ボタンを押下し、議事録が選択されている場合、/meeting-minutes/generated-content/{file_id}へ遷移する。",
+      "- 議事録未選択で「表示」ボタンを押下した場合、アラートを表示し遷移しない。",
+      "- ユーザーが「ダウンロード」ボタンを押下し、議事録が選択されている場合、/api/v1/download/meeting-minutes/{file_id}へリクエストし、ダウンロードが開始される。",
+      "- 議事録未選択で「ダウンロード」ボタンを押下した場合、アラートを表示し遷移しない。",
+      "- ダウンロード失敗時はアラートでエラーを通知する。",
+      "- 認証されていない場合、アクセス時に/loginへリダイレクトされる。",
+      "",
+      "---",
+      "【議事録作成結果画面（/meeting-minutes/generated-content/{file_id}, /api/v1/download/meeting-minutes/{file_id}, meeting_summary_result.html）】",
+      "",
+      "- 議事録作成画面で「表示」ボタン押下時、/meeting-minutes/generated-content/{file_id}へ遷移し、議事録内容が表示される。",
+      "- 画面表示時、サーバーからfile_id, file_name, comments, QAsが渡されている場合のみ内容を表示する。",
+      "- ユーザーが「ダウンロード」ボタンを押下したとき、/api/v1/download/meeting-minutes/{file_id}へリクエストし、.docxファイルのダウンロードが開始される。",
+      "- ダウンロード失敗時はエラーメッセージをアラート表示する。",
+      "- ユーザーが「戻る」ボタンを押下したとき、前画面またはリファラーに遷移する。",
+      "- ユーザーが「top」ボタンを押下したとき、ページ最上部にスクロールする。",
+      "- 認証されていない場合、アクセス時に/loginへリダイレクトされる。",
+      "- 指定file_idのデータが存在しない場合、エラーメッセージを表示する。",
+      "",
+      "---",
+      "【想定QA作成画面（/expected-QA, /expected-QA/generated-content, /expected-QA/generated-content/{file_id}, /api/v1/download/expected-qa/{file_id}, expected_QA.html）】",
+      "",
+      "- ユーザーがメニュー画面で「想定QA作成」ボタンを押下したとき、/expected-QAへ遷移する。",
+      "- ユーザーが「ファイル選択」ボタンを押し、.xlsxまたは.pdfファイルを選択したとき、選択ファイル名が表示される。",
+      "- ユーザーが「作成」ボタンを押下し、ファイルが選択されている場合、/expected-QA/generated-contentへPOST送信され、想定QA生成処理が開始される。",
+      "- ファイル未選択で「作成」ボタンを押下した場合、アラートを表示し遷移しない。",
+      "- 想定QA生成後、作成済みQA一覧が画面に表示される。",
+      "- ユーザーが一覧からQAファイルをラジオボタンで選択したとき、選択行がハイライトされる。",
+      "- ユーザーが「表示」ボタンを押下し、QAファイルが選択されている場合、/expected-QA/generated-content/{file_id}へ遷移する。",
+      "- QAファイル未選択で「表示」ボタンを押下した場合、アラートを表示し遷移しない。",
+      "- ユーザーが「ダウンロード」ボタンを押下し、QAファイルが選択されている場合、/api/v1/download/expected-qa/{file_id}へリクエストし、.xlsxファイルのダウンロードが開始される。",
+      "- QAファイル未選択で「ダウンロード」ボタンを押下した場合、アラートを表示し遷移しない。",
+      "- ダウンロード失敗時はアラートでエラーを通知する。",
+      "- 認証されていない場合、アクセス時に/loginへリダイレクトされる。",
+      "",
+      "---",
+      "【想定QA結果画面（/expected-QA/generated-content/{file_id}, /api/v1/download/expected-qa/{file_id}, expected_QA_result.html）】",
+      "",
+      "- 想定QA作成画面で「表示」ボタン押下時、/expected-QA/generated-content/{file_id}へ遷移し、QA内容が表示される。",
+      "- 画面表示時、サーバーからfile_id, file_name, expected_qasが渡されている場合のみ内容を表示する。",
+      "- ユーザーが「ダウンロード」ボタンを押下したとき、/api/v1/download/expected-qa/{file_id}へリクエストし、.xlsxファイルのダウンロードが開始される。",
+      "- ダウンロード失敗時はエラーメッセージをアラート表示する。",
+      "- ユーザーが「戻る」ボタンを押下したとき、前画面またはリファラーに遷移する。",
+      "- ユーザーが「top」ボタンを押下したとき、ページ最上部にスクロールする。",
+      "- 認証されていない場合、アクセス時に/loginへリダイレクトされる。",
+      "- 指定file_idのデータが存在しない場合、エラーメッセージを表示する。",
+      "",
+      "---"
+    ]
+  },
+  "screen_design": {
+    "screen_designs": [
+      {
+        "screen_name": "ログイン画面",
+        "design_data": {
+          "activity_diagram": [
+            "```plantuml",
+            "@startuml",
+            "|ユーザー|",
+            "start",
+            ":ログイン画面にアクセス;",
+            "|システム|",
+            ":ログインフォームを表示;",
+            "|ユーザー|",
+            ":ユーザー名とパスワードを入力;",
+            ":「ログイン」ボタンをクリック;",
+            "|システム|",
+            ":入力値を受け取り、/login (POST) に送信;",
+            ":入力値のバリデーション;",
+            "if (ユーザー名またはパスワードが未入力?) then (はい)",
+            "  :エラーメッセージを表示;",
+            "  :フォームに再表示;",
+            "  stop",
+            "else (いいえ)",
+            "  :認証処理 (session_manager.login) を実行;",
+            "  if (認証成功?) then (はい)",
+            "    :セッションIDを発行し保存;",
+            "    :pre_login_urlクッキー値（なければ'/'）へリダイレクト;",
+            "    :メニュー画面(/menu)または元画面へ遷移;",
+            "    stop",
+            "  else (いいえ)",
+            "    :エラーメッセージを表示;",
+            "    :フォームに再表示（usernameを保持）;",
+            "    stop",
+            "  endif",
+            "endif",
+            "@enduml",
+            "```"
+          ],
+          "annotations": [
+            "ログイン画面でユーザーが実行できる操作は以下の通りです。",
+            "",
+            "1. ユーザー名とパスワードを入力欄に入力する。",
+            "2. 「ログイン」ボタンをクリックして認証リクエストを送信する（POST /login）。",
+            "3. 認証失敗時、画面上にエラーメッセージが表示される。",
+            "4. 認証失敗時、前回入力したユーザー名がフォームに再表示される。",
+            "5. 認証成功時、メニュー画面など次の画面に自動遷移する。"
+          ],
+          "flow": [
+            {
+              "flow_step": "ログインフォーム入力・送信",
+              "description": "ユーザーがログイン画面にアクセスし、ユーザー名とパスワードを入力する。『ログイン』ボタンをクリックすると、入力内容がPOSTメソッドで「/login」エンドポイントに送信される。"
+            },
+            {
+              "flow_step": "入力値バリデーション・認証処理",
+              "description": "サーバー側で受け取ったユーザー名とパスワードの認証処理を実行する。認証情報ファイル（access_info_file.sample.json等）を参照し、session_manager.pyのcheck_access_infoで認証判定を行う。"
+            },
+            {
+              "flow_step": "認証成功時の画面遷移",
+              "description": "認証が成功した場合、セッションIDが発行され、ユーザーの認証状態が有効となる。pre_login_urlクッキー値（なければトップページ）へリダイレクトし、ログイン後の画面に遷移する。"
+            },
+            {
+              "flow_step": "認証失敗時のエラー表示",
+              "description": "認証に失敗した場合、ログイン画面（login.html）にエラーメッセージ（error）が表示される。必要に応じて、前回入力したユーザー名（username）がフォームに再表示される。"
+            }
+          ],
+          "state_changes": [
+            {
+              "identifier": "ログインフォーム入力値の状態",
+              "description": "【トリガー】ユーザー操作（ユーザー名・パスワード入力）／【変更前】未入力または前回値／【変更後】新しい入力値がフォームにセットされる／【更新条件】ユーザーがinput欄に値を入力した時／【UI反映】フォーム欄に入力値が表示される。前回失敗時はusernameが再表示される場合あり／【永続化】サーバー側には未送信（画面内のみ）／【外部連携】なし／【通知】なし／【確定タイミング】即時（入力時）"
+            },
+            {
+              "identifier": "ログインボタン押下による認証リクエスト送信",
+              "description": "【トリガー】ユーザー操作（ログインボタン押下）／【変更前】未認証状態／【変更後】認証リクエストがサーバーにPOST送信される／【更新条件】ユーザーがログインボタンをクリックした時／【UI反映】画面遷移は未確定（認証結果により変化）／【永続化】入力値はサーバーに送信されるが、画面側には永続化されない／【外部連携】サーバー側の認証処理（session_manager.py, main.py）と連携／【通知】なし（この時点では）／【確定タイミング】即時（ボタン押下時）"
+            },
+            {
+              "identifier": "認証処理結果によるログイン状態の変化",
+              "description": "【トリガー】外部イベント（サーバー側認証処理の応答）／【変更前】未認証状態／【変更後】認証成功時は認証済み状態（セッションID発行）、失敗時は未認証のまま／【更新条件】サーバー側でusername/passwordが正しい場合のみ認証成功／【UI反映】成功時はpre_login_urlまたはトップページにリダイレクト、失敗時はlogin.htmlにエラーメッセージ（error）が表示される／【永続化】認証成功時はセッションIDがCookieに保存される（サーバー側でSessionManager.sessionsに記録）／【外部連携】session_manager.pyのcheck_access_info, login処理、access_info_file.sample.jsonのDB更新（updateAccessInfo）／【通知】失敗時は画面上にエラー表示（ToastやDialogではなくHTML上のerror欄）／【確定タイミング】非同期（サーバー応答後）"
+            },
+            {
+              "identifier": "エラーメッセージ表示状態",
+              "description": "【トリガー】外部イベント（認証失敗時のサーバー応答）／【変更前】エラーメッセージ非表示／【変更後】エラーメッセージ（error）が画面上に表示される／【更新条件】認証失敗時のみ／【UI反映】login.htmlのerror欄にメッセージが表示される／【永続化】画面内のみ（サーバー側には保存されない）／【外部連携】なし／【通知】画面上で即時表示／【確定タイミング】非同期（サーバー応答後）"
+            },
+            {
+              "identifier": "セッションIDの発行・保存",
+              "description": "【トリガー】外部イベント（認証成功時のサーバー処理）／【変更前】セッションID未発行／【変更後】新規セッションIDが発行され、SessionManager.sessionsに保存され、ユーザーのCookieにセットされる／【更新条件】認証成功時のみ／【UI反映】画面遷移（pre_login_urlまたはトップページへリダイレクト）／【永続化】サーバー側（SessionManager.sessions）とユーザー端末（Cookie）に保存／【外部連携】session_manager.py, main.pyの認証・セッション管理処理／【通知】なし（画面遷移のみ）／【確定タイミング】非同期（サーバー応答後）"
+            }
+          ],
+          "notes": [
+            {
+              "name": "必須入力",
+              "content": "ユーザー名とパスワードは必須入力項目であり、未入力の場合はエラーメッセージを表示して認証処理を中断する必要があります。"
+            },
+            {
+              "name": "認証処理",
+              "content": "ログインボタン押下時、サーバー側で認証処理を行い、認証失敗時はエラーメッセージを画面に表示し、成功時はセッションIDを発行して遷移先へリダイレクトします。"
+            },
+            {
+              "name": "権限制御",
+              "content": "未認証状態で他画面にアクセスした場合は、必ずログイン画面へリダイレクトし、認証済みセッションのみ他画面への遷移を許可します。"
+            },
+            {
+              "name": "セッション管理",
+              "content": "ログイン成功時はセッションIDをクッキーに保存し、以降のリクエストで認証状態を維持する必要があります。"
+            },
+            {
+              "name": "エラー表示",
+              "content": "認証失敗時や入力値不備時は、画面上に分かりやすいエラーメッセージを表示し、前回入力したユーザー名を再表示します。"
+            },
+            {
+              "name": "通信失敗時",
+              "content": "サーバーとの通信失敗時は、タイムアウトやネットワークエラーを検知し、ユーザーに再試行を促すエラーメッセージを表示します。"
+            },
+            {
+              "name": "入力値保持",
+              "content": "認証失敗時は、ユーザー名入力値をフォームに保持して再表示し、再入力の手間を軽減します。"
+            },
+            {
+              "name": "リトライ仕様",
+              "content": "認証APIへのリクエストが失敗した場合、ユーザーが再度ログインボタンを押すことで再試行できる設計とします。"
+            }
+          ]
+        }
+      },
+      {
+        "screen_name": "メニュー画面",
+        "design_data": {
+          "activity_diagram": [
+            "```plantuml",
+            "@startuml",
+            "|ユーザー|",
+            "start",
+            "",
+            ":メニュー画面を表示;",
+            ":「議事録作成」または「想定QA作成」ボタンを確認;",
+            "",
+            "if (\"議事録作成ボタンをクリック?\") then (はい)",
+            "  :/meeting-minutes 画面へ遷移;",
+            "  stop",
+            "else",
+            "  if (\"想定QA作成ボタンをクリック?\") then (はい)",
+            "    :/expected-QA 画面へ遷移;",
+            "    stop",
+            "  else",
+            "    :何も操作しない（待機）;",
+            "    stop",
+            "  endif",
+            "endif",
+            "",
+            "@enduml",
+            "```"
+          ],
+          "annotations": [
+            "メニュー画面でユーザーが実行できる操作は以下の通りです。",
+            "",
+            "1. 「議事録作成」ボタンをクリックして、議事録作成画面（/meeting-minutes）へ遷移する。",
+            "2. 「想定QA作成」ボタンをクリックして、想定QA作成画面（/expected-QA）へ遷移する。",
+            "3. 画面中央に表示された「IRツール」タイトルを閲覧する（操作ではないがUI要素として表示）。",
+            "4. いずれかのボタンを押すまで画面上で待機する（自動処理や他の操作はなし）。",
+            "5. 他の画面への遷移以外の操作（ファイル選択・入力・ダウンロード等）は提供されない。"
+          ],
+          "flow": [
+            {
+              "flow_step": "議事録作成ボタン押下",
+              "description": "ユーザーがメニュー画面で「議事録作成」ボタンをクリックすると、/meeting-minutes画面へ遷移する。システム側の追加処理はなく、画面遷移のみが発生する。"
+            },
+            {
+              "flow_step": "想定QA作成ボタン押下",
+              "description": "ユーザーがメニュー画面で「想定QA作成」ボタンをクリックすると、/expected-QA画面へ遷移する。システム側の追加処理はなく、画面遷移のみが発生する。"
+            }
+          ],
+          "state_changes": [
+            {
+              "identifier": "議事録作成ボタン押下による画面遷移",
+              "description": "【トリガー】ユーザー操作（「議事録作成」ボタン押下）\n【変更前】メニュー画面表示中\n【変更後】/meeting-minutes画面へ遷移\n【更新条件】ユーザーが「議事録作成」ボタンをクリックした場合のみ\n【UI反映】画面が「議事録作成」画面に切り替わる。メニュー画面は非表示となり、議事録作成用のUIが表示される。\n【永続化】なし（画面遷移のみでデータ保存は発生しない）\n【外部連携】なし\n【ユーザー通知】なし（遷移のみ）\n【確定タイミング】即時（クリック直後に遷移）"
+            },
+            {
+              "identifier": "想定QA作成ボタン押下による画面遷移",
+              "description": "【トリガー】ユーザー操作（「想定QA作成」ボタン押下）\n【変更前】メニュー画面表示中\n【変更後】/expected-QA画面へ遷移\n【更新条件】ユーザーが「想定QA作成」ボタンをクリックした場合のみ\n【UI反映】画面が「想定QA作成」画面に切り替わる。メニュー画面は非表示となり、想定QA作成用のUIが表示される。\n【永続化】なし（画面遷移のみでデータ保存は発生しない）\n【外部連携】なし\n【ユーザー通知】なし（遷移のみ）\n【確定タイミング】即時（クリック直後に遷移）"
+            }
+          ],
+          "notes": [
+            {
+              "name": "権限制御",
+              "content": "未認証ユーザーが直接アクセスした場合はログイン画面へリダイレクトされるよう、認証チェックを必ず実装してください。"
+            },
+            {
+              "name": "画面遷移",
+              "content": "メニュー画面の各ボタンは正しい遷移先（/meeting-minutes, /expected-QA）へリンクされていることを保証し、URL変更時は保守漏れに注意してください。"
+            },
+            {
+              "name": "操作制限",
+              "content": "メニュー画面ではボタン以外の操作やショートカットによる遷移を許可せず、意図しない画面遷移や機能呼び出しが発生しないようにしてください。"
+            },
+            {
+              "name": "UI一貫性",
+              "content": "メニュー画面のデザイン・レイアウトは他画面（議事録作成・想定QA作成）と統一し、ボタン配置やラベル表記の変更時は全画面で整合性を保ってください。"
+            },
+            {
+              "name": "多重操作防止",
+              "content": "ボタンの多重クリックによる二重遷移やリクエスト送信が発生しないよう、クリック後は一時的にボタンを無効化するなどの対策を検討してください。"
+            },
+            {
+              "name": "通信失敗時",
+              "content": "画面遷移時にサーバー応答が得られない場合は、エラーメッセージを表示し、リトライやトップ画面への戻る操作を案内してください。"
+            },
+            {
+              "name": "アクセシビリティ",
+              "content": "キーボード操作やスクリーンリーダー利用時にもメニュー画面の全機能が利用可能であることを確認し、aria属性やフォーカス制御を適切に設定してください。"
+            }
+          ]
+        }
+      },
+      {
+        "screen_name": "議事録作成画面",
+        "design_data": {
+          "activity_diagram": [
+            "```plantuml",
+            "@startuml",
+            "|ユーザー|",
+            "start",
+            "",
+            ":「ファイル選択」ボタンをクリック;",
+            ":ローカルから音声/動画ファイル(mp3, wav, mp4)を選択;",
+            ":選択したファイル名を画面に表示;",
+            "",
+            ":「作成」ボタンをクリック;",
+            "if (ファイルが選択されているか?) then (はい)",
+            "    :ファイルを/meeting-minutes/generated-contentへPOST送信;",
+            "    |システム|",
+            "    :ファイル受信・保存;",
+            "    :extract_comments_and_qa.create_gijiroku_dataで議事録データ生成;",
+            "    :file_id.jsonへID・ファイル名・日時を記録;",
+            "    :comments_and_qa.jsonへ解析結果保存;",
+            "    :議事録一覧データを取得;",
+            "    |ユーザー|",
+            "    :作成済み議事録一覧をテーブル表示;",
+            "else (いいえ)",
+            "    :アラート表示「ファイルを選択してください」;",
+            "    stop",
+            "endif",
+            "",
+            ":一覧から議事録ファイルをラジオボタンで選択;",
+            ":選択行をハイライト;",
+            "",
+            "partition 操作選択 {",
+            "    :「表示」ボタンをクリック;",
+            "    if (ファイルが選択されているか?) then (はい)",
+            "        :/meeting-minutes/generated-content/{fileId}へ遷移;",
+            "        |システム|",
+            "        :comments_and_qa.jsonから議事録データを取得;",
+            "        :transform_comment_dataで整形;",
+            "        :meeting_summary_result.htmlへレンダリング;",
+            "        |ユーザー|",
+            "        :議事録内容(改善点・要望、フィードバック、QA一覧)を表示;",
+            "    else (いいえ)",
+            "        :アラート表示「ファイルを選択してください」;",
+            "    endif",
+            "",
+            "    :「ダウンロード」ボタンをクリック;",
+            "    if (ファイルが選択されているか?) then (はい)",
+            "        :/api/v1/download/meeting-minutes/{fileId}へリクエスト送信;",
+            "        |システム|",
+            "        :comments_and_qa.jsonからデータ取得;",
+            "        :GijirokuDataオブジェクトへ変換;",
+            "        :convert_to_docx_dataでWord(docx)バイトデータ生成;",
+            "        :Responseでファイルダウンロード提供;",
+            "        |ユーザー|",
+            "        :.docxファイルが端末にダウンロードされる;",
+            "    else (いいえ)",
+            "        :アラート表示「ファイルを選択してください」;",
+            "    endif",
+            "}",
+            "",
+            "stop",
+            "@enduml",
+            "```"
+          ],
+          "annotations": [
+            "「議事録作成画面」でユーザーが実行できる具体的な操作は以下の通りです。",
+            "",
+            "1. 「ファイル選択」ボタンを押して、ローカルの音声・動画ファイル（mp3, wav, mp4）を選択し、選択したファイル名を画面に表示する。",
+            "2. 「作成」ボタンを押して、選択したファイルをサーバーにアップロードし、議事録生成処理を開始する（ファイル未選択時はアラート表示）。",
+            "3. 作成済み議事録一覧からラジオボタンでファイルを選択し、選択行をハイライト表示する。",
+            "4. 「表示」ボタンを押して、選択した議事録ファイルの詳細ページ（/meeting-minutes/generated-content/{fileId}）に遷移する（ファイル未選択時はアラート表示）。",
+            "5. 「ダウンロード」ボタンを押して、選択した議事録ファイルを/api/v1/download/meeting-minutes/{fileId}経由でWordファイル（.docx）としてダウンロードする（ファイル未選択時はアラート表示、失敗時はエラーメッセージ表示）。"
+          ],
+          "flow": [
+            {
+              "flow_step": "ファイル選択・アップロードによる議事録作成",
+              "description": "ユーザーが「ファイル選択」ボタンをクリックし、ローカルの音声・動画ファイル（mp3, wav, mp4）を選択する。選択したファイル名が画面に表示され、アップロードエリアの背景色が変化する。ユーザーが「作成」ボタンをクリックすると、ファイルが未選択の場合はアラートが表示され処理が中断される。ファイルが選択されていればフォームが/meeting-minutes/generated-contentにPOST送信され、サーバー側で議事録生成処理が開始される。生成後、作成済み議事録の一覧がテーブル形式で画面に表示される。"
+            },
+            {
+              "flow_step": "作成済み議事録一覧の表示・選択",
+              "description": "サーバーから返された作成済み議事録の一覧（ファイルID・ファイル名・日時）がテーブル形式で表示される。ユーザーは一覧から議事録ファイルをラジオボタンで選択でき、選択した行がハイライトされる。"
+            },
+            {
+              "flow_step": "議事録ファイルの表示",
+              "description": "ユーザーが一覧から議事録ファイルを選択した状態で「表示」ボタンをクリックすると、選択した議事録ファイルの詳細ページ（/meeting-minutes/generated-content/{fileId}）に遷移し、議事録内容（コメント・QAなど）が表示される。ファイル未選択の場合はアラートが表示され、処理が中断される。"
+            },
+            {
+              "flow_step": "議事録ファイルのダウンロード",
+              "description": "ユーザーが一覧から議事録ファイルを選択した状態で「ダウンロード」ボタンをクリックすると、選択した議事録ファイルのダウンロードAPI（/api/v1/download/meeting-minutes/{fileId}）にリクエストが送信され、.docxファイルとしてダウンロードが開始される。ファイル未選択の場合はアラートが表示され、処理が中断される。ダウンロード失敗時はエラーメッセージがアラート表示される。"
+            }
+          ],
+          "state_changes": [
+            {
+              "identifier": "ファイル選択状態",
+              "description": "【トリガー】ユーザー操作（「ファイル選択」ボタン押下）により、ローカルの音声・動画ファイル（mp3, wav, mp4）を選択する。選択前は未選択状態、選択後はファイル名が画面に表示され、アップロードエリアの背景色が変化する。ファイルはまだサーバーに送信されていない。UI上で選択済みファイル名が表示される。永続化はされない（ローカル状態のみ）。通知はなし。状態変更は即時。"
+            },
+            {
+              "identifier": "ファイルアップロード・議事録生成リクエスト",
+              "description": "【トリガー】ユーザー操作（「作成」ボタン押下）。未選択の場合はアラート表示（UIでエラー通知）、選択済みの場合はフォームが/meeting-minutes/generated-contentにPOST送信される。変更前は未アップロード、変更後はサーバーにファイルが送信され、議事録生成処理が開始される。サーバー側で音声認識・話者分類・コメント抽出・QA抽出・トピック分類・レポート変換などが非同期で実行される。議事録データ（comments_and_qa.json）が生成・保存され、file_id.jsonにファイルID・ファイル名・日時が記録される（DB/JSONファイルへの永続化）。UI上はアップロード完了後、議事録一覧が更新される。ユーザー通知はアラート（未選択時）または画面更新（成功時）。状態変更は非同期（サーバー処理完了後）。"
+            },
+            {
+              "identifier": "議事録一覧の更新・表示",
+              "description": "【トリガー】システム自動処理（画面表示時、または議事録生成後）。変更前は議事録一覧が未表示または古い状態、変更後はfile_id.jsonから取得した最新の議事録ファイル一覧（ファイルID・ファイル名・日時）がテーブル形式で表示される。UI上で一覧が更新される。永続化はfile_id.json（サーバー側）で管理。ユーザー通知はなし（画面更新のみ）。状態変更は即時（画面描画時）。"
+            },
+            {
+              "identifier": "議事録ファイル選択状態",
+              "description": "【トリガー】ユーザー操作（議事録一覧のラジオボタン選択）。変更前は未選択、変更後は選択した議事録ファイルIDが内部状態として保持され、選択行がハイライト表示される。UI上で選択行の強調表示。永続化はされない（画面内状態のみ）。通知はなし。状態変更は即時。"
+            },
+            {
+              "identifier": "議事録詳細表示",
+              "description": "【トリガー】ユーザー操作（「表示」ボタン押下）。ファイル未選択の場合はアラート表示（UIでエラー通知）、選択済みの場合は/meeting-minutes/generated-content/{fileId}へ遷移し、サーバー側でcomments_and_qa.jsonを読み込み、transform_comment_dataで整形した議事録内容（改善点・要望、投資家フィードバック、QA一覧）がmeeting_summary_result.htmlに表示される。変更前は一覧画面、変更後は詳細画面。UI上で議事録内容が展開される。永続化はサーバー側JSONファイル。通知はアラート（未選択時）または画面遷移（成功時）。状態変更は即時（遷移時）。"
+            },
+            {
+              "identifier": "議事録ファイルダウンロード状態",
+              "description": "【トリガー】ユーザー操作（「ダウンロード」ボタン押下）。ファイル未選択の場合はアラート表示（UIでエラー通知）、選択済みの場合は/api/v1/download/meeting-minutes/{fileId}にリクエスト送信。サーバー側でcomments_and_qa.jsonをGijirokuDataオブジェクトに変換し、convert_to_docx_dataでWord（.docx）バイトデータ化、レスポンスで返却。変更前は未ダウンロード、変更後はユーザー端末に.docxファイルが保存される。UI上はダウンロード完了またはエラーアラート。永続化はサーバー側JSON/Wordファイル。通知はアラート（未選択・失敗時）またはダウンロード（成功時）。状態変更は非同期（サーバー応答後）。"
+            },
+            {
+              "identifier": "アップロードエリアのUI状態（活性/非活性・背景色）",
+              "description": "【トリガー】ユーザー操作（ファイル選択・未選択）。ファイル未選択時はアップロードエリアが非活性またはデフォルト背景色、ファイル選択時は活性化・背景色変化。UI上で視覚的に状態が変化。永続化はなし。通知はなし。状態変更は即時。"
+            },
+            {
+              "identifier": "エラー表示（アラート）",
+              "description": "【トリガー】ユーザー操作（ファイル未選択で「作成」「表示」「ダウンロード」ボタン押下時）、またはダウンロード失敗時。変更前はエラー未表示、変更後はアラートダイアログでエラーメッセージが表示される。UI上でアラート表示。永続化はなし。通知はアラート（即時）。状態変更は即時。"
+            },
+            {
+              "identifier": "議事録データの永続化（comments_and_qa.json, file_id.json）",
+              "description": "【トリガー】システム自動処理（議事録生成リクエスト受信時）。変更前は議事録データ未保存、変更後はcomments_and_qa.jsonに解析結果（コメント・QA）が保存され、file_id.jsonにファイルID・ファイル名・日時が記録される。サーバー側JSONファイルとして永続化。UI上は議事録一覧・詳細表示に反映。通知はなし。状態変更は非同期（サーバー処理完了時）。"
+            },
+            {
+              "identifier": "議事録データの構造化・解析状態",
+              "description": "【トリガー】システム自動処理（ファイルアップロード時）。変更前は未解析、変更後はminutesgen/extract_comments_and_qa.pyのcreate_gijiroku_dataで音声認識→話者分類→コメント抽出→QA抽出→トピック分類→レポート変換が順次実行され、構造化データ（comments, QAs）が生成される。外部サービス（Azure Speech, Azure OpenAI）とのAPI連携あり。UI上は議事録内容として表示。永続化はcomments_and_qa.json。通知はなし。状態変更は非同期（解析完了時）。"
+            }
+          ],
+          "notes": [
+            {
+              "name": "権限制御",
+              "content": "議事録作成画面へのアクセスは認証済みユーザーのみ許可し、未認証時はログイン画面へリダイレクトする必要があります。"
+            },
+            {
+              "name": "必須入力",
+              "content": "音声・動画ファイルが未選択の場合は「ファイル未選択」アラートを表示し、議事録作成処理を中断してください。"
+            },
+            {
+              "name": "対応拡張子",
+              "content": "アップロード可能なファイルはmp3, wav, mp4のみとし、他の拡張子の場合はエラー表示でアップロードを拒否してください。"
+            },
+            {
+              "name": "排他制御",
+              "content": "同時に複数のファイルアップロードや議事録作成リクエストが発生した場合、サーバー側で処理の重複や競合が起きないよう排他制御を行う必要があります。"
+            },
+            {
+              "name": "一覧整合性",
+              "content": "作成済み議事録一覧はファイルID・ファイル名・日時の一意性を保証し、表示順や重複表示が発生しないよう管理してください。"
+            },
+            {
+              "name": "選択必須",
+              "content": "議事録の表示・ダウンロード操作時は必ず一覧からファイルを選択させ、未選択の場合はアラートで処理を中断してください。"
+            },
+            {
+              "name": "ダウンロード失敗",
+              "content": "ダウンロードAPI通信失敗時やファイル取得エラー時は、ユーザーに明確なエラーメッセージをアラート表示してください。"
+            },
+            {
+              "name": "ファイル保存",
+              "content": "アップロードされたファイルはサーバー側で一意のIDを付与し、保存先ディレクトリの存在確認・初期化を必ず行ってください。"
+            },
+            {
+              "name": "リトライ設計",
+              "content": "議事録生成処理やダウンロード処理がタイムアウト・通信失敗した場合、ユーザーに再試行を促すUIやリトライ設計を検討してください。"
+            },
+            {
+              "name": "入力サイズ制限",
+              "content": "アップロードファイルのサイズ上限（例: 100MBなど）を設定し、超過時はエラー表示でアップロードを拒否してください。"
+            },
+            {
+              "name": "進捗表示",
+              "content": "議事録生成に時間がかかる場合は、ユーザーに進捗状況や処理中表示を行い、操作不能状態であることを明示してください。"
+            }
+          ]
+        }
+      },
+      {
+        "screen_name": "議事録作成結果画面",
+        "design_data": {
+          "activity_diagram": [
+            "```plantuml",
+            "@startuml",
+            "title 議事録作成結果画面のアクティビティ図",
+            "",
+            "start",
+            "",
+            ":画面表示要求（GET /meeting-minutes/generated-content/{file_id});",
+            ":サーバーがfile_idで議事録データを取得;",
+            ":議事録データ（file_name, comments, QAs等）を画面に表示;",
+            "",
+            "partition ユーザー操作 {",
+            "    :議事録内容（改善点・要望、フィードバック、QA一覧）を閲覧;",
+            "    :「ダウンロード」ボタンをクリックするか?;",
+            "    if (ダウンロードボタン押下) then (Yes)",
+            "        :file_id, file_nameを取得;",
+            "        :/api/v1/download/meeting-minutes/{file_id}にリクエスト送信;",
+            "        :サーバーが議事録データをWord(.docx)形式で変換;",
+            "        :ファイルダウンロードレスポンスを返却;",
+            "        if (ダウンロード成功) then (Yes)",
+            "            :ユーザー端末に.docxファイルを保存;",
+            "        else (No)",
+            "            :エラーメッセージを表示;",
+            "        endif",
+            "    endif",
+            "",
+            "    :「戻る」ボタンをクリックするか?;",
+            "    if (戻るボタン押下) then (Yes)",
+            "        :前画面またはリファラーに遷移;",
+            "        stop",
+            "    endif",
+            "",
+            "    :「top」ボタンをクリックするか?;",
+            "    if (topボタン押下) then (Yes)",
+            "        :ページ最上部にスクロール;",
+            "    endif",
+            "}",
+            "",
+            "stop",
+            "",
+            "@enduml",
+            "```"
+          ],
+          "annotations": [
+            "議事録作成結果画面（meeting_summary_result.html）でユーザーが実行できる操作は以下の通りです。",
+            "",
+            "1. 画面上で議事録の内容（今後の改善点・要望、投資家フィードバック、QA一覧）を閲覧できる。",
+            "2. 「ダウンロード」ボタンをクリックすると、表示中の議事録ファイル（.docx形式）を /api/v1/download/meeting-minutes/{file_id} からダウンロードできる。",
+            "3. 「戻る」ボタンをクリックすると、前の画面（take_minutes.htmlなど）に遷移できる。",
+            "4. 「top」ボタンをクリックすると、ページ最上部にスクロールできる。",
+            "5. ダウンロード失敗時やエラー発生時は、アラートでエラーメッセージが表示される。"
+          ],
+          "flow": [
+            {
+              "flow_step": "議事録作成結果の表示",
+              "description": "画面表示時、サーバーから渡されたfile_id, file_name, comments, QAsをもとに、議事録の各セクション（今後の改善点・要望、投資家フィードバック、QA一覧）が画面上に展開される。ユーザーは議事録内容を閲覧できる。"
+            },
+            {
+              "flow_step": "ダウンロードボタン押下",
+              "description": "ユーザーが「ダウンロード」ボタンをクリックすると、file_idとfile_nameを取得し、/api/v1/download/meeting-minutes/{file_id}にリクエストを送信する。サーバーから.docxファイルが返却された場合は自動的にダウンロードが開始される。ダウンロード失敗時はエラーメッセージが表示される。"
+            },
+            {
+              "flow_step": "戻るボタン押下",
+              "description": "ユーザーが「戻る」ボタンをクリックすると、前画面またはリファラーに遷移する。"
+            },
+            {
+              "flow_step": "topボタン押下",
+              "description": "ユーザーが「top」ボタンをクリックすると、ページ最上部にスクロールする。"
+            }
+          ],
+          "state_changes": [
+            {
+              "identifier": "議事録ファイル選択状態",
+              "description": "【トリガー】ユーザー操作（ファイル選択ボタン押下）により、ローカルの音声・動画ファイル（mp3, wav, mp4）を選択する。選択前は未選択状態、選択後はファイル名が画面に表示され、アップロードエリアの背景色が変化する。UI上で選択済みファイル名が明示される。永続化はされず、画面内の一時状態。通知はなし。即時反映。"
+            },
+            {
+              "identifier": "議事録ファイルアップロード・生成処理",
+              "description": "【トリガー】ユーザー操作（作成ボタン押下）で、選択済みファイルがある場合のみフォームが/meeting-minutes/generated-contentにPOST送信される。送信前は未アップロード、送信後はサーバー側で音声認識・話者分類・コメント抽出・QA抽出・トピック分類・レポート変換などの自動処理が開始される。議事録データ（comments_and_qa.json）が生成・保存され、file_id.jsonにID・ファイル名・日時が記録される。UI上はアップロード中ローディング表示（明記なしだが一般的UI挙動）、完了後は議事録一覧が更新される。永続化はJSONファイル（DB相当）に保存。通知はアップロード失敗時のみアラート表示。状態変更は非同期（サーバー処理完了後）。"
+            },
+            {
+              "identifier": "議事録一覧の表示・更新",
+              "description": "【トリガー】システム自動処理（画面表示時・議事録生成完了時）で、file_id.jsonから議事録ファイル情報（ID・ファイル名・日時）を取得し、一覧テーブルとしてUIに表示する。変更前は一覧未表示または古い一覧、変更後は最新の議事録一覧が表示される。永続化はfile_id.jsonに記録。通知はなし。即時反映。"
+            },
+            {
+              "identifier": "議事録ファイル選択状態（一覧テーブル）",
+              "description": "【トリガー】ユーザー操作（ラジオボタン選択）で、議事録一覧から1つのファイルを選択する。選択前は未選択、選択後は該当行がハイライトされ、選択状態がUIに反映される。永続化はされず、画面内の一時状態。通知はなし。即時反映。"
+            },
+            {
+              "identifier": "議事録詳細表示遷移",
+              "description": "【トリガー】ユーザー操作（表示ボタン押下）で、選択済み議事録ファイルの詳細ページ（/meeting-minutes/generated-content/{fileId}）に遷移する。ファイル未選択の場合はアラート表示し遷移しない。遷移後はサーバーからcomments_and_qa.jsonを読み込み、transform_comment_dataで整形した内容がmeeting_summary_result.htmlに表示される。UIは議事録内容（改善点・要望、投資家フィードバック、QA一覧）が展開される。永続化はJSONファイル。通知は未選択時のみアラート。即時反映。"
+            },
+            {
+              "identifier": "議事録ファイルダウンロード処理",
+              "description": "【トリガー】ユーザー操作（ダウンロードボタン押下）で、選択済み議事録ファイルのダウンロードAPI（/api/v1/download/meeting-minutes/{fileId}）にリクエストを送信。サーバー側でcomments_and_qa.jsonをGijirokuDataオブジェクトに変換し、convert_to_docx_dataでWord（.docx）バイトデータ化、レスポンスで返却。変更前は未ダウンロード、変更後はユーザー端末に.docxファイルが保存される。UIはダウンロード進行中（明記なしだが一般的UI挙動）、失敗時はアラート表示。永続化はユーザー端末にファイル保存。通知は失敗時のみアラート。状態変更は非同期（サーバー処理完了後）。"
+            },
+            {
+              "identifier": "議事録作成失敗・ダウンロード失敗時のエラー表示",
+              "description": "【トリガー】システム自動処理（アップロード・ダウンロード失敗時）で、エラーが発生した場合はアラートでユーザーに通知される。変更前は正常状態、変更後はエラー表示状態。UIはアラートダイアログが表示される。永続化はなし。通知は即時。"
+            },
+            {
+              "identifier": "画面遷移（戻る・topボタン）",
+              "description": "【トリガー】ユーザー操作（戻るボタン押下・topボタン押下）で、戻るボタンは前画面またはリファラーに遷移、topボタンはページ最上部にスクロールする。変更前は現在の表示位置、変更後は遷移先画面またはページトップ。UIは遷移・スクロールで即時反映。永続化はなし。通知はなし。"
+            }
+          ],
+          "notes": [
+            {
+              "name": "権限制御",
+              "content": "議事録一覧・ダウンロード・表示は認証済みユーザーのみが操作可能であり、未認証時はログイン画面へリダイレクトされる必要があります。"
+            },
+            {
+              "name": "必須入力",
+              "content": "ファイルアップロード時は音声・動画ファイル（mp3, wav, mp4）が未選択の場合、アラート表示しサーバー送信を禁止してください。"
+            },
+            {
+              "name": "ファイル形式制限",
+              "content": "アップロード可能なファイル拡張子はmp3, wav, mp4のみとし、他形式の場合はエラー表示でアップロード不可としてください。"
+            },
+            {
+              "name": "排他制御",
+              "content": "議事録作成処理中は同一ファイルの重複アップロードや複数同時リクエストを防止し、進行中は再送信不可としてください。"
+            },
+            {
+              "name": "一覧整合性",
+              "content": "議事録一覧はサーバー側のファイルID・ファイル名・作成日時と同期し、削除・追加・更新時は即時反映されるようにしてください。"
+            },
+            {
+              "name": "選択必須",
+              "content": "表示・ダウンロード操作時は議事録ファイルが選択されていない場合、アラート表示し処理を中断してください。"
+            },
+            {
+              "name": "通信失敗時",
+              "content": "ダウンロードAPIや表示APIへのリクエスト失敗時は、エラーメッセージをアラートで通知し、再試行や画面遷移を行わないようにしてください。"
+            },
+            {
+              "name": "ファイル名表示",
+              "content": "アップロード・一覧・ダウンロード時はファイル名を正しく表示し、ユーザーが選択内容を誤認しないようにしてください。"
+            },
+            {
+              "name": "ダウンロード形式",
+              "content": "ダウンロード時は.docx形式で返却し、MIMEタイプやファイル名が正しく設定されていることを保証してください。"
+            },
+            {
+              "name": "操作フィードバック",
+              "content": "ファイル選択・アップロード・一覧選択時はUIのハイライトやメッセージ表示で操作状態を明示し、誤操作を防止してください。"
+            }
+          ]
+        }
+      },
+      {
+        "screen_name": "想定QA作成画面",
+        "design_data": {
+          "activity_diagram": [
+            "```plantuml",
+            "@startuml",
+            "|ユーザー|",
+            "start",
+            "",
+            ":「ファイル選択」ボタンをクリック;",
+            ":ローカルから .xlsx または .pdf ファイルを選択;",
+            ":選択したファイル名を画面に表示;",
+            "",
+            ":「作成」ボタンをクリック;",
+            "if (ファイルが選択されているか?) then (はい)",
+            "    :フォームを /expected-QA/generated-content にPOST送信;",
+            "    |システム|",
+            "    :ファイルを受信・保存;",
+            "    :expected_QA.create_qa でQAデータ生成;",
+            "    :expected_QA.qa_merge で重複・類似QAを統合;",
+            "    :expected_qas.json にQAデータ保存;",
+            "    :QAS_FILEID_JSON_FILE_PATH にファイルID・ファイル名・日時を記録;",
+            "    :作成済みQA一覧を取得;",
+            "    |ユーザー|",
+            "    :作成済みQA一覧をテーブル表示;",
+            "else (いいえ)",
+            "    :アラート表示「ファイルを選択してください」;",
+            "    stop",
+            "endif",
+            "",
+            ":作成済みQA一覧からQAファイルをラジオボタンで選択;",
+            ":選択した行をハイライト;",
+            "",
+            "partition 操作選択 {",
+            "    :「表示」ボタンをクリック;",
+            "    if (QAファイルが選択されているか?) then (はい)",
+            "        :/expected-QA/generated-content/{file_id} に遷移;",
+            "        |システム|",
+            "        :expected_qas.json からQAデータを取得;",
+            "        :transform_expected_qas_data で整形;",
+            "        :expected_QA_result.html にQAリストを表示;",
+            "        |ユーザー|",
+            "        :QAリストを閲覧;",
+            "    else (いいえ)",
+            "        :アラート表示「ファイルを選択してください」;",
+            "    endif",
+            "",
+            "    :「ダウンロード」ボタンをクリック;",
+            "    if (QAファイルが選択されているか?) then (はい)",
+            "        :/api/v1/download/expected-qa/{file_id} にリクエスト送信;",
+            "        |システム|",
+            "        :expected_qas.json からQAデータを取得;",
+            "        :ExpectedQAData オブジェクトに変換;",
+            "        :convert_to_docx_data でExcelバイトデータ化;",
+            "        :Excelファイル（.xlsx）をレスポンス返却;",
+            "        |ユーザー|",
+            "        :Excelファイルのダウンロード開始;",
+            "    else (いいえ)",
+            "        :アラート表示「ファイルを選択してください」;",
+            "    endif",
+            "}",
+            "",
+            "stop",
+            "@enduml",
+            "```"
+          ],
+          "annotations": [
+            "「想定QA作成画面」でユーザーが実行できる操作は以下の通りです。",
+            "",
+            "1. 「ファイル選択」ボタンを押して、ローカルPCから.xlsxまたは.pdfファイルを選択できる（選択したファイル名が画面に表示される）。",
+            "2. 「作成」ボタンを押すことで、選択したファイルをサーバーにアップロードし、想定QAの自動生成をリクエストできる（ファイル未選択時はアラート表示）。",
+            "3. 作成済みQA一覧テーブルから、ラジオボタンで任意のQAファイルを選択できる（選択行がハイライトされる）。",
+            "4. 「表示」ボタンを押すと、選択したQAファイルの詳細ページ（/expected-QA/generated-content/{file_id}）に遷移し内容を閲覧できる（ファイル未選択時はアラート表示）。",
+            "5. 「ダウンロード」ボタンを押すと、選択したQAファイルをExcel形式（.xlsx）でダウンロードできる（/api/v1/download/expected-qa/{file_id}、ファイル未選択時はアラート表示）。"
+          ],
+          "flow": [
+            {
+              "flow_step": "ファイル選択",
+              "description": "ユーザーが「ファイル選択」ボタンを押し、ローカルから.xlsxまたは.pdfファイルを選択する。選択したファイル名が画面に表示される。"
+            },
+            {
+              "flow_step": "想定QA作成リクエスト送信",
+              "description": "ユーザーが「作成」ボタンを押す。ファイルが未選択の場合はアラートを表示し処理を中断。ファイルが選択されている場合、フォームが/expected-QA/generated-contentにPOST送信される。サーバー側でファイルを受け取り、想定QAを生成し、作成済みQA一覧が更新される。"
+            },
+            {
+              "flow_step": "作成済みQA一覧表示・選択",
+              "description": "サーバーから取得した作成済みQA一覧（ファイル名・最終更新日時）がテーブル形式で表示される。ユーザーは一覧からQAファイルをラジオボタンで選択し、選択した行がハイライトされる。"
+            },
+            {
+              "flow_step": "QA詳細表示",
+              "description": "ユーザーが「表示」ボタンを押すと、選択したQAファイルの詳細ページ（/expected-QA/generated-content/{file_id}）に遷移する。ファイル未選択の場合はアラートを表示し処理を中断する。"
+            },
+            {
+              "flow_step": "QAファイルダウンロード",
+              "description": "ユーザーが「ダウンロード」ボタンを押すと、選択したQAファイルを/api/v1/download/expected-qa/{file_id}経由でダウンロードする。ファイル未選択の場合はアラートを表示し処理を中断する。ダウンロード失敗時はエラーメッセージをアラート表示する。"
+            }
+          ],
+          "state_changes": [
+            {
+              "identifier": "ファイル選択状態",
+              "description": "【トリガー】ユーザー操作（「ファイル選択」ボタン押下）により、ローカルPCから.xlsxまたは.pdfファイルを選択する。変更前：未選択 → 変更後：ファイル選択済み。選択したファイル名が画面上に表示され、アップロードエリアの背景色が変化する。永続化はされず、UI上の一時的な状態変化。ユーザー通知は画面表示のみ。確定タイミングは即時。"
+            },
+            {
+              "identifier": "ファイル未選択時のアラート表示",
+              "description": "【トリガー】ユーザー操作（「作成」ボタン押下）時にファイルが未選択の場合、処理を中断しアラートを表示する。変更前：アラート非表示 → 変更後：アラート表示。UI上でアラートダイアログが表示される。永続化なし。ユーザー通知はアラート。確定タイミングは即時。"
+            },
+            {
+              "identifier": "ファイルアップロード・想定QA作成リクエスト送信",
+              "description": "【トリガー】ユーザー操作（「作成」ボタン押下）でファイルが選択されている場合、フォームが/expected-QA/generated-contentにPOST送信される。変更前：未送信 → 変更後：ファイル送信済み。サーバー側でファイル保存・QA生成処理が開始される。UI上は送信後に画面遷移またはローディング表示（テンプレート記載なしだが、サーバー応答待ち状態）。永続化はサーバー側でファイル保存・QAデータ生成（expected_qas.json等）。外部連携はexpected_QA.py（LLM API）やファイルストレージ。ユーザー通知は画面遷移または結果表示。確定タイミングは非同期（サーバー処理完了後）。"
+            },
+            {
+              "identifier": "作成済みQA一覧の更新・表示",
+              "description": "【トリガー】システム自動処理（画面表示時・QA作成後）で、サーバーから作成済みQA一覧（ファイルID・ファイル名・日時）が取得され、テーブル形式で表示される。変更前：一覧未表示または旧データ → 変更後：最新一覧表示。UI上でテーブルが更新される。永続化はサーバー側（QAS_FILEID_JSON_FILE_PATH等）。外部連携はAPI（fetch_expected_qa_list等）。ユーザー通知は画面表示のみ。確定タイミングは即時（画面ロード時・QA作成完了時）。"
+            },
+            {
+              "identifier": "QAファイル選択状態（一覧テーブル）",
+              "description": "【トリガー】ユーザー操作（一覧テーブルのラジオボタン選択）で、選択したQAファイルの行がハイライトされる。変更前：未選択または他ファイル選択 → 変更後：新規ファイル選択・ハイライト。UI上で選択行の強調表示。永続化なし。ユーザー通知は画面表示のみ。確定タイミングは即時。"
+            },
+            {
+              "identifier": "QAファイル未選択時のアラート表示（表示・ダウンロード）",
+              "description": "【トリガー】ユーザー操作（「表示」または「ダウンロード」ボタン押下）時にQAファイルが未選択の場合、処理を中断しアラートを表示する。変更前：アラート非表示 → 変更後：アラート表示。UI上でアラートダイアログが表示される。永続化なし。ユーザー通知はアラート。確定タイミングは即時。"
+            },
+            {
+              "identifier": "QAファイル詳細表示画面への遷移",
+              "description": "【トリガー】ユーザー操作（「表示」ボタン押下）でQAファイルが選択されている場合、/expected-QA/generated-content/{file_id}へ遷移し、該当QAデータが表示される。変更前：一覧画面 → 変更後：詳細画面。UI上でQAリストがカテゴリごとに展開される。永続化はサーバー側（expected_qas.json等）。外部連携はAPI（get_expected_QA_result）。ユーザー通知は画面遷移・表示。確定タイミングは即時（遷移後データ取得）。"
+            },
+            {
+              "identifier": "QAファイルダウンロード処理",
+              "description": "【トリガー】ユーザー操作（「ダウンロード」ボタン押下）でQAファイルが選択されている場合、/api/v1/download/expected-qa/{file_id}にリクエストを送信し、サーバーからExcelファイル（.xlsx）が返却される。変更前：未ダウンロード → 変更後：ダウンロード完了。UI上はダウンロード開始（ファイル保存ダイアログ等）。永続化はサーバー側（expected_qas.json、Excelファイル生成）。外部連携はAPI（download_task_file、doc_conversion.py）。ユーザー通知はダウンロード完了（ブラウザのダウンロードUI）。エラー時はアラート表示。確定タイミングは非同期（サーバー応答後）。"
+            },
+            {
+              "identifier": "QAファイルダウンロード失敗時のアラート表示",
+              "description": "【トリガー】外部システム連携（ダウンロードAPI応答）でエラーが発生した場合、アラートでエラーメッセージを表示する。変更前：アラート非表示 → 変更後：アラート表示。UI上でアラートダイアログが表示される。永続化なし。ユーザー通知はアラート。確定タイミングは非同期（API応答後）。"
+            },
+            {
+              "identifier": "画面ロード時のQA一覧初期化・取得",
+              "description": "【トリガー】システム自動処理（画面表示時）で、サーバーからQA一覧データ（QAS_FILEID_JSON_FILE_PATH）が取得され、テーブルに反映される。変更前：一覧未表示 → 変更後：一覧表示。UI上でテーブルが初期化・更新される。永続化はサーバー側。外部連携はAPI（fetch_expected_qa_list）。ユーザー通知は画面表示のみ。確定タイミングは即時。"
+            }
+          ],
+          "notes": [
+            {
+              "name": "権限制御",
+              "content": "画面表示・ファイルアップロード・ダウンロード・一覧取得・詳細表示は必ず認証済みユーザーのみ許可し、未認証時は/loginへリダイレクトしてください。"
+            },
+            {
+              "name": "必須入力",
+              "content": "ファイルアップロード時は.xlsxまたは.pdfファイルが選択されていない場合、サーバー側・クライアント側双方でアラート表示し処理を中断してください。"
+            },
+            {
+              "name": "ファイル種別制限",
+              "content": "アップロード可能なファイルは.xlsxまたは.pdfのみとし、他形式の場合はエラーを返してアップロードを拒否してください。"
+            },
+            {
+              "name": "排他制御",
+              "content": "同一ファイルIDで同時に複数のアップロード・生成処理が走らないよう、サーバー側で排他制御を行い、競合時はエラーを返してください。"
+            },
+            {
+              "name": "一覧整合性",
+              "content": "作成済みQA一覧はファイルID・ファイル名・最終更新日時の整合性を保ち、表示前にファイル管理JSONの存在・内容を必ず検証してください。"
+            },
+            {
+              "name": "選択必須",
+              "content": "一覧からQAファイルを表示・ダウンロードする際は、必ず選択済みファイルIDが存在することを検証し、未選択時はアラート表示で処理を中断してください。"
+            },
+            {
+              "name": "通信失敗時",
+              "content": "ダウンロード・表示・アップロード等のAPI通信失敗時は、ユーザーに分かりやすいエラーメッセージをアラート表示し、リトライは行わず処理を中断してください。"
+            },
+            {
+              "name": "ファイル保存",
+              "content": "アップロードファイルはサーバー側で一意なファイルIDを付与し、既存ファイルと重複しないよう保存・管理してください。"
+            },
+            {
+              "name": "ダウンロード形式",
+              "content": "ダウンロードAPIは必ずExcel（.xlsx）形式で返却し、MIMEタイプやファイル名の指定ミスがないよう注意してください。"
+            },
+            {
+              "name": "一覧更新",
+              "content": "新規QA作成後は一覧表示を即時更新し、画面遷移やリロードなしでも最新状態が反映されるようにしてください。"
+            }
+          ]
+        }
+      },
+      {
+        "screen_name": "想定QA結果画面",
+        "design_data": {
+          "activity_diagram": [
+            "```plantuml",
+            "@startuml",
+            "|ユーザー|",
+            "start",
+            "",
+            ":「想定QA結果画面」を表示;",
+            ":サーバーからfile_name, expected_qas, file_idを受け取る;",
+            ":QAリスト（カテゴリごと）を画面に展開;",
+            "",
+            "partition 操作 {",
+            "    :「ダウンロード」ボタンをクリック?;",
+            "    if (クリックしたか) then (Yes)",
+            "        :file_id, file_nameを取得;",
+            "        :/api/v1/download/expected-qa/{file_id}にリクエスト送信;",
+            "        :サーバーでExcelファイル（.xlsx）を生成;",
+            "        :Excelファイルをレスポンスで返却;",
+            "        :ダウンロード開始;",
+            "        if (ダウンロード失敗) then (Yes)",
+            "            :エラーメッセージを表示;",
+            "        else (No)",
+            "        endif",
+            "    else (No)",
+            "    endif",
+            "",
+            "    :「top」ボタンをクリック?;",
+            "    if (クリックしたか) then (Yes)",
+            "        :ページトップにスクロール;",
+            "    else (No)",
+            "    endif",
+            "",
+            "    :「戻る」ボタンをクリック?;",
+            "    if (クリックしたか) then (Yes)",
+            "        :前画面またはリファラーに遷移;",
+            "        stop",
+            "    else (No)",
+            "    endif",
+            "}",
+            "",
+            "stop",
+            "@enduml",
+            "```"
+          ],
+          "annotations": [
+            "「想定QA結果画面」でユーザーが実行できる具体的な操作は以下の通りです。",
+            "",
+            "1. 画面上でカテゴリごとに展開された想定QAリスト（質問・回答）を閲覧できる。",
+            "2. 「ダウンロード」ボタンをクリックすると、表示中のQAデータ（Excel形式 .xlsxファイル）を/api/v1/download/expected-qa/{file_id}経由でダウンロードできる。",
+            "3. 「top」ボタンをクリックすると、ページ最上部にスクロールできる。",
+            "4. 「戻る」ボタンをクリックすると、前画面またはリファラーに遷移できる。",
+            "5. ダウンロード時にエラーが発生した場合は、アラートでエラーメッセージが表示される。"
+          ],
+          "flow": [
+            {
+              "flow_step": "QA生成結果の表示",
+              "description": "画面表示時、サーバーから渡されたファイル名（file_name）をタイトルとして表示し、expected_qas（カテゴリごとのQAリスト）を一覧形式で展開する。各QAの質問・回答内容がカテゴリごとに表示される。"
+            },
+            {
+              "flow_step": "ダウンロードボタン押下",
+              "description": "ユーザーが「ダウンロード」ボタンをクリックすると、file_idとfile_nameを取得し、/api/v1/download/expected-qa/{file_id}エンドポイントにリクエストを送信する。サーバーがExcelファイル（.xlsx）を返却した場合、自動的にダウンロードが開始される。ダウンロード失敗時はアラートでエラー内容が通知される。"
+            },
+            {
+              "flow_step": "topボタン押下",
+              "description": "ユーザーが「top」ボタンをクリックすると、ページ最上部にスクロールする。画面内の表示内容や状態は変化しない。"
+            },
+            {
+              "flow_step": "戻るボタン押下",
+              "description": "ユーザーが「戻る」ボタンをクリックすると、前画面またはリファラー画面に遷移する。遷移先はブラウザ履歴やリファラー情報に依存する。"
+            }
+          ],
+          "state_changes": [
+            {
+              "identifier": "ファイル選択状態",
+              "description": "【トリガー】ユーザー操作（ファイル選択ボタン押下）により、ローカルPCから.xlsxまたは.pdfファイルを選択する。選択前は未選択状態、選択後はファイル名が画面に表示され、アップロードエリアの背景色が変化する。ファイル選択は一時的なUI状態であり、永続化はされない。ユーザー通知はなし。状態変更は即時。"
+            },
+            {
+              "identifier": "ファイルアップロード・想定QA生成処理",
+              "description": "【トリガー】ユーザー操作（作成ボタン押下）で、選択済みファイルが/expected-QA/generated-contentにPOST送信される。未選択の場合はアラート表示（UIで通知）、処理中断。選択済みの場合はサーバー側でexpected_QA.create_qa・expected_QA.qa_mergeが実行され、QAデータが生成・統合される。生成後、expected_qas.jsonに永続化され、QAS_FILEID_JSON_FILE_PATHにファイルID・ファイル名・日時が記録される。処理は非同期で、完了後に画面が更新される。ユーザー通知は画面遷移または一覧更新で間接的に行われる。"
+            },
+            {
+              "identifier": "作成済みQA一覧の更新・表示",
+              "description": "【トリガー】システム自動処理（画面表示時・QA生成完了時）で、QAS_FILEID_JSON_FILE_PATHから作成済みQA一覧（ファイルID・ファイル名・日時）が取得され、テーブル形式で画面に表示される。変更前は一覧未表示または古い状態、変更後は最新一覧が表示される。UIの状態変化は即時。永続化はQAS_FILEID_JSON_FILE_PATHにて行われる。ユーザー通知はなし。"
+            },
+            {
+              "identifier": "QAファイル選択状態（一覧テーブル）",
+              "description": "【トリガー】ユーザー操作（一覧テーブルのラジオボタン選択）で、選択前は未選択状態、選択後は該当行がハイライトされ、選択状態がUIに反映される。選択状態は一時的なUI状態であり、永続化はされない。ユーザー通知はなし。状態変更は即時。"
+            },
+            {
+              "identifier": "QAファイル表示遷移",
+              "description": "【トリガー】ユーザー操作（表示ボタン押下）で、選択済みQAファイルのfile_idをもとに/expected-QA/generated-content/{file_id}へ遷移する。未選択の場合はアラート表示（UI通知）、処理中断。遷移後はexpected_QA_result.html画面が表示され、サーバーから渡されたexpected_qasデータがカテゴリごとに展開される。状態変更は即時。"
+            },
+            {
+              "identifier": "QAファイルダウンロード処理",
+              "description": "【トリガー】ユーザー操作（ダウンロードボタン押下）で、選択済みQAファイルのfile_idをもとに/api/v1/download/expected-qa/{file_id}へリクエストが送信される。サーバー側でexpected_qas.jsonからデータを読み込み、convert_to_docx_dataでExcel（.xlsx）バイトデータに変換し、レスポンスとして返却。ダウンロードが成功すればユーザー端末にファイルが保存される。失敗時はアラート表示（UI通知）。永続化はexpected_qas.jsonにて行われる。外部連携はなし。状態変更は即時。"
+            },
+            {
+              "identifier": "QA生成結果画面の表示状態",
+              "description": "【トリガー】システム自動処理（/expected-QA/generated-content/{file_id}画面表示時）で、サーバーから渡されたfile_name・expected_qasデータが画面に展開される。変更前は未表示、変更後はカテゴリごとのQAリストが表示される。UI状態の変化は即時。永続化はexpected_qas.jsonにて行われる。ユーザー通知はなし。"
+            },
+            {
+              "identifier": "ページトップへのスクロール",
+              "description": "【トリガー】ユーザー操作（topボタン押下）で、画面がページ最上部にスクロールする。変更前は任意のスクロール位置、変更後はトップ位置。UIのみの状態変化であり、永続化はされない。ユーザー通知はなし。状態変更は即時。"
+            },
+            {
+              "identifier": "前画面への遷移",
+              "description": "【トリガー】ユーザー操作（戻るボタン押下）で、前画面またはリファラーに遷移する。変更前はQA結果画面表示中、変更後は前画面表示。UIのみの状態変化であり、永続化はされない。ユーザー通知はなし。状態変更は即時。"
+            }
+          ],
+          "notes": [
+            {
+              "name": "権限制御",
+              "content": "画面表示・ファイルアップロード・ダウンロード・一覧取得・詳細表示は認証済みユーザーのみ許可し、未認証時は/loginへリダイレクトする必要があります。"
+            },
+            {
+              "name": "必須入力",
+              "content": "ファイルアップロード時は.xlsxまたは.pdfファイルの選択が必須であり、未選択の場合はアラート表示して処理を中断してください。"
+            },
+            {
+              "name": "ファイル種別制限",
+              "content": "アップロード可能なファイルは.xlsxまたは.pdfのみとし、他形式の場合はエラー表示して受け付けないようにしてください。"
+            },
+            {
+              "name": "排他制御",
+              "content": "同一ファイルIDで同時に複数のアップロード・ダウンロード・表示リクエストが発生した場合、整合性を保つために排他制御を行う必要があります。"
+            },
+            {
+              "name": "一覧整合性",
+              "content": "作成済みQA一覧はサーバー側のファイルID・ファイル名・最終更新日時と同期し、表示内容と実データの不整合が発生しないようにしてください。"
+            },
+            {
+              "name": "選択必須",
+              "content": "一覧からQAファイルを表示・ダウンロードする際は、必ずラジオボタンでファイル選択が必要であり、未選択時はアラート表示して処理を中断してください。"
+            },
+            {
+              "name": "通信失敗時",
+              "content": "ファイルアップロード・ダウンロード・一覧取得・詳細表示のAPI通信が失敗した場合は、エラー内容をアラートで通知し、リトライはユーザー操作に委ねてください。"
+            },
+            {
+              "name": "ダウンロード形式",
+              "content": "ダウンロードAPI（/api/v1/download/expected-qa/{file_id}）から返却されるファイルは.xlsx形式であり、MIMEタイプやファイル名の指定ミスがないようにしてください。"
+            },
+            {
+              "name": "ファイルID管理",
+              "content": "ファイルIDは一意で連番管理されており、ID重複や欠番が発生しないよう新規作成時は既存IDリストを参照して割り当ててください。"
+            },
+            {
+              "name": "エラー設計",
+              "content": "サーバー側でファイル未存在・解析失敗・権限不足などが発生した場合は、JSONでエラーメッセージを返却し、画面側でアラート表示してください。"
+            },
+            {
+              "name": "操作制限",
+              "content": "アップロード・作成・表示・ダウンロードの各操作は画面上で同時に複数実行できないよう、処理中はボタン非活性化や二重送信防止を実装してください。"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "database_design_data": {
+    "table_descriptions": [
+      {
+        "name": "access_info",
+        "description": [
+          "| カラム名         | データ型         | 制約                | 説明                                   |",
+          "|------------------|------------------|---------------------|----------------------------------------|",
+          "| id               | SERIAL           | PRIMARY KEY         | レコードの一意識別子（自動採番）       |",
+          "| user_id          | VARCHAR(64)      | UNIQUE NOT NULL     | ユーザーID（ログインIDなど）           |",
+          "| username         | VARCHAR(128)     | NOT NULL            | ユーザー名                             |",
+          "| access_role      | VARCHAR(64)      | NOT NULL            | アクセス権限（例：admin, user等）      |",
+          "| auth_token       | TEXT             |                     | 認証トークン（セッションやAPI用）      |",
+          "| created_at       | TIMESTAMP        | DEFAULT NOW()       | レコード作成日時                       |",
+          "| updated_at       | TIMESTAMP        | DEFAULT NOW()       | レコード更新日時                       |"
+        ]
+      }
+    ],
+    "er_diagram": [
+      "```plantuml",
+      "@startuml",
+      "entity \"アクセス情報\" as access_info",
+      "",
+      "@enduml",
+      "```"
+    ]
+  },
+  "interface_design": {
+    "auth_methods": [
+      "# 認証方式",
+      "",
+      "- セッションベース認証",
+      "  - ログイン時にユーザー名・パスワードを入力し、認証情報ファイル（暗号化済みJSON）と照合して認証を実施。",
+      "  - 認証成功時にセッションID（ランダムな文字列）を発行し、クッキーに保存。以降のリクエストでセッションIDを利用して認証状態を判定。",
+      "  - 認証情報ファイルはAES暗号化されて保存されており、復号して認証判定を行う。",
+      "  - 認証要否は環境変数（REQUIRE_LOGIN）で制御可能。",
+      "",
+      "# 認可制御",
+      "",
+      "- 全APIエンドポイント（Web画面・ファイルアップロード・ダウンロード・データ取得/表示等）は、認証済みセッションが必要。",
+      "  - 未認証の場合、全リクエストは/login画面へリダイレクトされる。",
+      "  - ログイン画面（/login GET）は認証不要。ログイン処理（/login POST）は認証情報の照合のみ行い、認証失敗時はエラーメッセージを表示。",
+      "- 認証済みであれば、議事録・QAデータのアップロード、解析、保存、表示、ダウンロード等の全機能にアクセス可能。",
+      "- 権限条件は「認証済みユーザー」であり、ユーザーごとの細かな権限区分（管理者/一般ユーザー等）は情報なし。",
+      "- /api/access-info, /api/access-info/update, /api/access-info/delete などのAPIは外部認証サービスとの連携なし。アクセス情報の取得・更新・削除は認証済みユーザーのみが実行可能。",
+      "- 認証・認可が不要なAPIや例外は情報なし。",
+      "- 権限不足時（未認証時）は/login画面へのリダイレクト、またはエラーメッセージの表示のみ。",
+      "",
+      "---",
+      "",
+      "**補足:**  ",
+      "- 認証方式・認可制御の詳細は、利用者視点で「ログイン→セッション維持→全機能利用可能（未認証時はログイン画面へ）」という流れです。  ",
+      "- APIごとの個別の権限区分や認可例外は記載がありません。  ",
+      "- 認証・認可の方式や適用範囲は、主にmain.pyおよびsession_manager.pyの記述から特定しています。"
+    ],
+    "endpoint_data": [
+      {
+        "api_name": "ログイン画面表示API",
+        "method": "GET",
+        "uri": "/login",
+        "method_name": "get_menu",
+        "req_param": "-",
+        "response": "ログイン画面（login.html）が表示される",
+        "auth_required": "不要",
+        "summary": "ログインページ（login.html）を表示するためのGETリクエスト用エンドポイント。"
+      },
+      {
+        "api_name": "議事録ファイル一覧画面表示API",
+        "method": "GET",
+        "uri": "/meeting-minutes",
+        "method_name": "get_take_minutes",
+        "req_param": "-",
+        "response": "議事録ファイルIDとファイル名の一覧が表示されたHTML画面（take_minutes.html）が返されます。",
+        "auth_required": "必要",
+        "summary": "議事録ファイルのIDとファイル名一覧を取得し、HTMLテンプレートに渡して表示するAPIエンドポイント。"
+      },
+      {
+        "api_name": "期待されるQAリスト画面表示API",
+        "method": "GET",
+        "uri": "/expected-QA",
+        "method_name": "fetch_expected_qa_list",
+        "req_param": "-",
+        "response": "リクエスト情報とQASファイルID・ファイル名の一覧を含むHTML画面（expected_QA.html）が表示されます。ファイル情報がない場合は空の一覧が表示されます。",
+        "auth_required": "必要",
+        "summary": "期待されるQAリストのファイルIDとファイル名を取得し、HTMLテンプレートで表示するAPIエンドポイント。"
+      },
+      {
+        "api_name": "会議議事録ファイルアップロード・解析結果表示API",
+        "method": "POST",
+        "uri": "/meeting-minutes/generated-content",
+        "method_name": "get_meeting_summary",
+        "req_param": "会議議事録ファイル（meeting_file）",
+        "response": "アップロードした議事録ファイルのコメントとQAリストを解析し、結果をHTML画面（meeting_summary_result.html）で表示します。ファイル名やファイルIDも画面に含まれます。",
+        "auth_required": "必要",
+        "summary": "会議議事録ファイルをアップロードし、内容を解析・保存した上で、結果をHTMLテンプレートで返すAPIエンドポイント。"
+      },
+      {
+        "api_name": "議事録コメント・QA表示API",
+        "method": "GET",
+        "uri": "/meeting-minutes/generated-content/{file_id}",
+        "method_name": "get_meeting_summary_result",
+        "req_param": "議事録ファイルID（file_id）",
+        "response": "指定した議事録ファイルのコメント一覧とQAデータを含むHTML画面、またはファイル未存在・不正時はエラーメッセージ（JSON形式）",
+        "auth_required": "必要",
+        "summary": "指定されたfile_idに対応する議事録のコメントとQAデータを取得し、HTMLテンプレートで表示するAPIエンドポイント。"
+      },
+      {
+        "api_name": "説明資料からQAデータ生成・統合画面",
+        "method": "POST",
+        "uri": "/expected-QA/generated-content",
+        "method_name": "get_expected_QA",
+        "req_param": "説明資料ファイル（複数アップロード可）",
+        "response": "アップロードした資料から生成・統合されたQAデータの結果画面（expected_QA_result.html）が表示され、ファイル名やファイルIDも確認できます。",
+        "auth_required": "必要",
+        "summary": "アップロードされた説明資料ファイルからQAデータを生成し、保存・マージした結果をHTMLテンプレートで返すAPIエンドポイント。"
+      },
+      {
+        "api_name": "指定したQAファイルの作成結果表示API",
+        "method": "GET",
+        "uri": "/expected-QA/generated-content/{file_id}",
+        "method_name": "get_expected_QA_result",
+        "req_param": "ファイルID（file_id）",
+        "response": "指定したファイルIDに紐づくQA作成結果をHTML画面で表示します。ファイルが存在しない場合やデータが不正な場合は、エラーメッセージを返します。",
+        "auth_required": "必要",
+        "summary": "指定されたfile_idに対応するQA作成結果をHTMLテンプレートで表示するAPIエンドポイント。"
+      },
+      {
+        "api_name": "指定したタスク種別とファイルIDによるファイルダウンロード機能",
+        "method": "GET",
+        "uri": "/api/v1/download/{task}/{file_id}",
+        "method_name": "download_task_file",
+        "req_param": "タスク種別（task）、ファイルID（file_id）",
+        "response": "指定したファイル（議事録はWord形式、QAデータはExcel形式）をダウンロード。該当ファイルが存在しない場合は404エラー。",
+        "auth_required": "必要",
+        "summary": "指定されたタスク種別とファイルIDに基づき、保存済みの議事録またはQAデータをWordまたはExcel形式でダウンロードできるAPIエンドポイント。"
+      },
+      {
+        "api_name": "ログイン認証API",
+        "method": "POST",
+        "uri": "/login",
+        "method_name": "post_login",
+        "req_param": "ユーザー名, パスワード",
+        "response": "ログイン成功時はダッシュボード等へのリダイレクト、失敗時はエラーメッセージ付きのログイン画面を表示",
+        "auth_required": "不要",
+        "summary": "ユーザーのログイン認証を行い、成功時はリダイレクト、失敗時はエラーメッセージ付きでログイン画面を再表示するAPIエンドポイント。"
+      },
+      {
+        "api_name": "ローカルAIサーバー稼働状況確認API",
+        "method": "GET",
+        "uri": "/api/v1/health_check",
+        "method_name": "health_check_local_server",
+        "req_param": "-",
+        "response": "サーバーが正常に稼働していればTrue、異常時はFalseが返されます。",
+        "auth_required": "必要",
+        "summary": "ローカルAIサーバーのヘルスチェックを行い、サーバーが稼働しているかどうかを判定します。"
+      },
+      {
+        "api_name": "音声ファイル文字起こし・話者分離API",
+        "method": "POST",
+        "uri": "/api/v1/register/transcribe_diarize",
+        "method_name": "speech_to_text_local_server",
+        "req_param": "音声ファイルパス（original_audio_path）、話者分離有無（with_diarization）、プロンプト文（prompt）",
+        "response": "文字起こし結果（transcript）、話者ごとの発話内容（speakers）、処理ID（process_id）、処理状態（state）などを含む認識結果データ",
+        "auth_required": "-",
+        "summary": "ローカルAIサーバーに音声ファイルを送信し、文字起こし（話者分離オプション付き）を行う関数です。"
+      }
+    ]
+  },
+  "sequence_diagram_data": {
+    "scenarios": [
+      {
+        "name": "ログイン・認証処理",
+        "description": "ユーザーがシステムにアクセスする際の認証画面表示、ユーザー名・パスワード入力、認証判定、セッションID発行・管理、認証失敗時のエラー表示など、システム利用開始のための一連の認証フロー。",
+        "sub_scenarios": [
+          "ログイン画面の表示（/login GET）",
+          "ユーザー名・パスワード入力と送信（/login POST）",
+          "認証情報の検証とセッションID発行",
+          "認証成功時のリダイレクト",
+          "認証失敗時のエラーメッセージ表示",
+          "セッションIDによる認証状態の検証（ミドルウェア）"
+        ]
+      },
+      {
+        "name": "メニュー画面操作",
+        "description": "ログイン後、ユーザーが主要機能（議事録作成、想定QA作成）を選択するためのメニュー画面の表示と遷移操作。",
+        "sub_scenarios": [
+          "メニュー画面の表示",
+          "議事録作成画面への遷移",
+          "想定QA作成画面への遷移"
+        ]
+      },
+      {
+        "name": "議事録作成・管理",
+        "description": "ユーザーが音声・動画ファイルをアップロードし、AIによる文字起こし・発言者分類・コメント/QA抽出・トピック分類・議事録生成・保存・表示・ダウンロードまでを行う一連の業務フロー。",
+        "sub_scenarios": [
+          "議事録作成画面の表示（/meeting-minutes GET）",
+          "音声・動画ファイルの選択・アップロード",
+          "ファイル未選択時のアラート表示",
+          "ファイルアップロードと議事録生成リクエスト送信（/meeting-minutes/generated-content POST）",
+          "音声ファイルの文字起こし（ローカルAIサーバー/Azure Speech）",
+          "話者分類（GPT-4によるIR/Investor判定）",
+          "発言者IDの修正・正規化",
+          "コメント・フィードバック抽出（LLM）",
+          "Q&Aペア抽出（LLM）",
+          "Q&Aトピック分類・要約（LLM）",
+          "議事録データの保存（JSON形式）",
+          "議事録ファイルID・ファイル名管理",
+          "議事録一覧の表示・選択",
+          "議事録詳細の表示（/meeting-minutes/generated-content/{file_id} GET）",
+          "議事録ファイルのダウンロード（/api/v1/download/meeting-minutes/{file_id} GET）",
+          "ダウンロード失敗時のエラー表示"
+        ]
+      },
+      {
+        "name": "想定QA作成・管理",
+        "description": "ユーザーがPDFやExcelファイルをアップロードし、AIによるQA自動生成・重複排除・統合・保存・表示・ダウンロードまでを行う一連の業務フロー。",
+        "sub_scenarios": [
+          "想定QA作成画面の表示（/expected-QA GET）",
+          "PDF/Excelファイルの選択・アップロード",
+          "ファイル未選択時のアラート表示",
+          "ファイルアップロードとQA生成リクエスト送信（/expected-QA/generated-content POST）",
+          "PDF解析・カテゴリ別QA生成（LLM）",
+          "重複QAの判定・排除（LLM）",
+          "複数ファイルのQA統合・マージ（LLM）",
+          "QAデータの保存（JSON形式）",
+          "QAファイルID・ファイル名管理",
+          "作成済みQA一覧の表示・選択",
+          "QA詳細の表示（/expected-QA/generated-content/{file_id} GET）",
+          "QAファイルのダウンロード（/api/v1/download/expected-qa/{file_id} GET）",
+          "ダウンロード失敗時のエラー表示"
+        ]
+      },
+      {
+        "name": "アクセス情報管理",
+        "description": "システムのアクセス情報（ユーザーID、権限、認証トークン等）の取得・更新・削除をAPI経由で行う管理業務。",
+        "sub_scenarios": [
+          "アクセス情報の取得（/api/access-info GET）",
+          "アクセス情報の更新（/api/access-info/update POST）",
+          "アクセス情報の削除（/api/access-info/delete POST）"
+        ]
+      },
+      {
+        "name": "環境構築・運用自動化",
+        "description": "Dockerやシェルスクリプトを用いたアプリケーションのビルド、環境変数設定、イメージ作成、コンテナ起動・停止、ネットワーク・ボリューム作成など、システム運用・環境構築の自動化フロー。",
+        "sub_scenarios": [
+          "Dockerイメージのビルド（docker_setup.sh, Dockerfile）",
+          "コンテナの起動・初期設定（docker_setup.sh, docker_run.sh）",
+          "ネットワーク・ボリュームの作成（docker_setup.sh）",
+          "環境変数・設定ファイルの管理（.env.sample, .dockerignore, .gitignore）",
+          "依存パッケージのインストール（requirements.txt）",
+          "コンテナの状態確認・停止（docker_run.sh）"
+        ]
+      }
+    ],
+    "participants": [
+      {
+        "name": "ログイン・認証処理",
+        "participants": [
+          "ユーザー",
+          "認証画面",
+          "認証情報検証モジュール",
+          "セッション管理モジュール",
+          "セッションデータストア",
+          "環境変数管理",
+          "リダイレクト制御",
+          "エラーメッセージ表示機能"
+        ]
+      },
+      {
+        "name": "メニュー画面操作: ログイン後、ユーザーが主要機能（議事録作成、想定QA作成）を選択するためのメニュー画面の表示と遷移操作。",
+        "participants": [
+          "ユーザー",
+          "メニュー画面UI",
+          "議事録作成画面UI",
+          "想定QA作成画面UI",
+          "認証セッション管理"
+        ]
+      },
+      {
+        "name": "議事録作成・管理",
+        "participants": [
+          "ユーザー",
+          "Webブラウザ",
+          "認証・セッション管理",
+          "議事録管理システム",
+          "ファイルストレージ",
+          "ローカルAIサーバー",
+          "Azure Speechサービス",
+          "GPT-4（話者分類AI）",
+          "LLMサービス（コメント・Q&A抽出AI）",
+          "議事録データベース（JSONファイル管理）"
+        ]
+      },
+      {
+        "name": "想定QA作成・管理: ユーザーがPDFやExcelファイルをアップロードし、AIによるQA自動生成・重複排除・統合・保存・表示・ダウンロードまでを行う一連の業務フロー。",
+        "participants": [
+          "ユーザー",
+          "Webアプリケーションサーバー",
+          "ファイルストレージ",
+          "AIサービス（大規模言語モデル）",
+          "QAデータ管理データベース（JSONファイル管理）",
+          "ファイルID・ファイル名管理システム",
+          "ダウンロードAPI",
+          "フロントエンド画面（想定QA作成画面・QA詳細画面）"
+        ]
+      },
+      {
+        "name": "アクセス情報管理: システムのアクセス情報（ユーザーID、権限、認証トークン等）の取得・更新・削除をAPI経由で行う管理業務",
+        "participants": [
+          "管理者ユーザー",
+          "アクセス情報管理API",
+          "アクセス情報データベース"
+        ]
+      },
+      {
+        "name": "環境構築・運用自動化: Dockerやシェルスクリプトを用いたアプリケーションのビルド、環境変数設定、イメージ作成、コンテナ起動・停止、ネットワーク・ボリューム作成など、システム運用・環境構築の自動化フロー。",
+        "participants": [
+          "システム管理者",
+          "Dockerエンジン",
+          "シェルスクリプト実行環境",
+          "環境変数管理システム",
+          "依存パッケージ管理システム",
+          "ファイルシステム",
+          "ネットワーク管理システム",
+          "ボリューム管理システム"
+        ]
+      }
+    ],
+    "sequence_diagrams": [
+      {
+        "scenario_name": "ログイン・認証処理",
+        "sequence_diagram": [
+          "@startuml",
+          "actor ユーザー",
+          "participant 認証画面",
+          "participant 認証情報検証モジュール",
+          "participant セッション管理モジュール",
+          "participant セッションデータストア",
+          "participant 環境変数管理",
+          "participant リダイレクト制御",
+          "participant エラーメッセージ表示機能",
+          "",
+          "ユーザー -> 認証画面 : ログイン画面を表示要求",
+          "activate 認証画面",
+          "認証画面 -> ユーザー : ログイン画面を表示",
+          "deactivate 認証画面",
+          "",
+          "ユーザー -> 認証画面 : ユーザー名・パスワード入力、ログインボタン押下",
+          "activate 認証画面",
+          "認証画面 -> 認証情報検証モジュール : 認証情報の検証依頼(ユーザー名, パスワード)",
+          "activate 認証情報検証モジュール",
+          "",
+          "認証情報検証モジュール -> 環境変数管理 : 認証用環境変数の取得",
+          "activate 環境変数管理",
+          "環境変数管理 --> 認証情報検証モジュール : 認証用環境変数を返却",
+          "deactivate 環境変数管理",
+          "",
+          "認証情報検証モジュール -> セッション管理モジュール : 認証情報の照合・セッションID発行依頼(ユーザー名, パスワード, 認証用環境変数)",
+          "activate セッション管理モジュール",
+          "",
+          "alt 認証成功",
+          "    セッション管理モジュール -> セッションデータストア : セッションデータの保存(セッションID, ユーザー情報)",
+          "    activate セッションデータストア",
+          "    セッションデータストア --> セッション管理モジュール : 保存完了",
+          "    deactivate セッションデータストア",
+          "",
+          "    セッション管理モジュール --> 認証情報検証モジュール : セッションIDを返却",
+          "    deactivate セッション管理モジュール",
+          "",
+          "    認証情報検証モジュール --> 認証画面 : 認証成功・セッションIDを返却",
+          "    deactivate 認証情報検証モジュール",
+          "",
+          "    認証画面 -> リダイレクト制御 : リダイレクト先の判定・遷移(セッションID)",
+          "    activate リダイレクト制御",
+          "    リダイレクト制御 --> ユーザー : メニュー画面等へ遷移",
+          "    deactivate リダイレクト制御",
+          "    deactivate 認証画面",
+          "",
+          "else 認証失敗",
+          "    セッション管理モジュール --> 認証情報検証モジュール : 認証失敗を返却",
+          "    deactivate セッション管理モジュール",
+          "",
+          "    認証情報検証モジュール --> 認証画面 : 認証失敗を返却",
+          "    deactivate 認証情報検証モジュール",
+          "",
+          "    認証画面 -> エラーメッセージ表示機能 : エラーメッセージの表示",
+          "    activate エラーメッセージ表示機能",
+          "    エラーメッセージ表示機能 --> ユーザー : エラーメッセージを表示",
+          "    deactivate エラーメッセージ表示機能",
+          "    deactivate 認証画面",
+          "end",
+          "",
+          "== 認証状態の検証（ミドルウェア） ==",
+          "ユーザー -> セッション管理モジュール : セッションIDによる認証状態の検証要求",
+          "activate セッション管理モジュール",
+          "セッション管理モジュール -> セッションデータストア : セッションIDの有効性・認証状態確認",
+          "activate セッションデータストア",
+          "セッションデータストア --> セッション管理モジュール : 認証状態を返却",
+          "deactivate セッションデータストア",
+          "",
+          "alt 認証済み",
+          "    セッション管理モジュール --> ユーザー : 認証済みとして処理継続",
+          "    deactivate セッション管理モジュール",
+          "else 未認証",
+          "    セッション管理モジュール -> リダイレクト制御 : ログイン画面へのリダイレクト指示",
+          "    activate リダイレクト制御",
+          "    リダイレクト制御 --> ユーザー : ログイン画面へ遷移",
+          "    deactivate リダイレクト制御",
+          "    deactivate セッション管理モジュール",
+          "end",
+          "@enduml"
+        ]
+      },
+      {
+        "scenario_name": "メニュー画面操作",
+        "sequence_diagram": [
+          "@startuml",
+          "ユーザー -> メニュー画面 : アクセス要求",
+          "activate メニュー画面",
+          "",
+          "メニュー画面 -> メニュー画面 : メニュー項目（議事録作成・想定QA作成）を表示",
+          "activate メニュー画面",
+          "",
+          "alt 議事録作成ボタン押下",
+          "    ユーザー -> メニュー画面 : 議事録作成ボタンをクリック",
+          "    メニュー画面 -> 議事録作成画面 : 画面遷移要求",
+          "    deactivate メニュー画面",
+          "    activate 議事録作成画面",
+          "    議事録作成画面 -> 議事録作成画面 : 議事録作成画面を表示",
+          "    deactivate 議事録作成画面",
+          "else 想定QA作成ボタン押下",
+          "    ユーザー -> メニュー画面 : 想定QA作成ボタンをクリック",
+          "    メニュー画面 -> 想定QA作成画面 : 画面遷移要求",
+          "    deactivate メニュー画面",
+          "    activate 想定QA作成画面",
+          "    想定QA作成画面 -> 想定QA作成画面 : 想定QA作成画面を表示",
+          "    deactivate 想定QA作成画面",
+          "end",
+          "",
+          "@enduml"
+        ]
+      },
+      {
+        "scenario_name": "議事録作成・管理",
+        "sequence_diagram": [
+          "@startuml",
+          "actor ユーザー",
+          "participant Webブラウザ",
+          "participant 認証・セッション管理",
+          "participant 議事録管理システム",
+          "participant ファイルストレージ",
+          "participant ローカルAIサーバー",
+          "participant Azure Speechサービス",
+          "participant GPT4話者分類AI",
+          "participant LLMサービス",
+          "participant 議事録データベース",
+          "",
+          "ユーザー -> Webブラウザ : 議事録作成画面を開く",
+          "Webブラウザ -> 認証・セッション管理 : 認証状態を確認する",
+          "認証・セッション管理 -> Webブラウザ : 認証結果を返す",
+          "Webブラウザ -> 議事録管理システム : 議事録作成画面の表示を要求",
+          "議事録管理システム -> 議事録データベース : 議事録一覧を取得",
+          "議事録データベース --> 議事録管理システム : 議事録一覧データを返す",
+          "議事録管理システム -> Webブラウザ : 議事録作成画面と一覧を返す",
+          "",
+          "ユーザー -> Webブラウザ : 音声・動画ファイルを選択",
+          "Webブラウザ -> ユーザー : ファイル名を画面に表示",
+          "",
+          "ユーザー -> Webブラウザ : 作成ボタンを押す",
+          "alt ファイル未選択",
+          "    Webブラウザ -> ユーザー : アラートを表示",
+          "else ファイル選択済み",
+          "    Webブラウザ -> 議事録管理システム : ファイルアップロードと議事録生成を要求(ファイルデータ)",
+          "    議事録管理システム -> ファイルストレージ : ファイルを保存",
+          "    ファイルストレージ --> 議事録管理システム : 保存完了",
+          "",
+          "    議事録管理システム -> ローカルAIサーバー : 音声認識・話者分離を依頼(ファイルパス)",
+          "    alt ローカルAIサーバー利用可能",
+          "        ローカルAIサーバー -> 議事録管理システム : 文字起こし・話者分離結果を返す",
+          "    else ローカルAIサーバー利用不可",
+          "        議事録管理システム -> Azure Speechサービス : 音声認識・話者分離を依頼(ファイルパス)",
+          "        Azure Speechサービス -> 議事録管理システム : 文字起こし・話者分離結果を返す",
+          "    end",
+          "",
+          "    議事録管理システム -> GPT4話者分類AI : 話者分類を依頼(文字起こしデータ)",
+          "    GPT4話者分類AI -> 議事録管理システム : 話者分類結果を返す",
+          "",
+          "    議事録管理システム -> LLMサービス : 発言者IDの修正・正規化を依頼(逐語録データ)",
+          "    LLMサービス -> 議事録管理システム : 修正済み逐語録データを返す",
+          "",
+          "    議事録管理システム -> LLMサービス : コメント・フィードバック抽出を依頼(修正済み逐語録)",
+          "    LLMサービス -> 議事録管理システム : コメント・フィードバックデータを返す",
+          "",
+          "    議事録管理システム -> LLMサービス : Q&Aペア抽出を依頼(修正済み逐語録)",
+          "    LLMサービス -> 議事録管理システム : Q&Aペアデータを返す",
+          "",
+          "    議事録管理システム -> LLMサービス : Q&Aトピック分類・要約を依頼(Q&Aペア)",
+          "    LLMサービス -> 議事録管理システム : トピック分類・要約済みQ&Aを返す",
+          "",
+          "    議事録管理システム -> 議事録データベース : 議事録データを保存(JSON形式)",
+          "    議事録データベース --> 議事録管理システム : 保存完了",
+          "",
+          "    議事録管理システム -> 議事録データベース : ファイルID・ファイル名を管理",
+          "    議事録データベース --> 議事録管理システム : 管理完了",
+          "",
+          "    議事録管理システム -> Webブラウザ : 議事録一覧を更新して返す",
+          "end",
+          "",
+          "ユーザー -> Webブラウザ : 議事録を選択",
+          "Webブラウザ -> ユーザー : 選択行をハイライト",
+          "",
+          "ユーザー -> Webブラウザ : 表示ボタンを押す",
+          "alt ファイル未選択",
+          "    Webブラウザ -> ユーザー : アラートを表示",
+          "else ファイル選択済み",
+          "    Webブラウザ -> 議事録管理システム : 議事録詳細の表示を要求(ファイルID)",
+          "    議事録管理システム -> 議事録データベース : 議事録データを取得(ファイルID)",
+          "    議事録データベース --> 議事録管理システム : 議事録データを返す",
+          "    議事録管理システム -> Webブラウザ : 議事録詳細データを返す",
+          "end",
+          "",
+          "ユーザー -> Webブラウザ : ダウンロードボタンを押す",
+          "alt ファイル未選択",
+          "    Webブラウザ -> ユーザー : アラートを表示",
+          "else ファイル選択済み",
+          "    Webブラウザ -> 議事録管理システム : 議事録ファイルのダウンロードを要求(ファイルID)",
+          "    議事録管理システム -> 議事録データベース : 議事録データを取得(ファイルID)",
+          "    議事録データベース --> 議事録管理システム : 議事録データを返す",
+          "    議事録管理システム -> Webブラウザ : Wordファイルデータを返す",
+          "    Webブラウザ -> ユーザー : ダウンロードを開始",
+          "    alt ダウンロード失敗",
+          "        Webブラウザ -> ユーザー : エラーメッセージを表示",
+          "    end",
+          "end",
+          "@enduml"
+        ]
+      },
+      {
+        "scenario_name": "想定QA作成・管理",
+        "sequence_diagram": [
+          "@startuml",
+          "actor ユーザー",
+          "participant expected_QA_html",
+          "participant main_py",
+          "participant expected_QA_py",
+          "participant LLMService",
+          "participant QAMerge",
+          "participant QACreator",
+          "participant QASファイルID管理",
+          "participant expected_qas_json",
+          "participant expected_QA_result_html",
+          "",
+          "ユーザー -> expected_QA_html : 画面を開く",
+          "expected_QA_html -> main_py : 想定QA作成画面の表示を要求",
+          "main_py -> QASファイルID管理 : 作成済みQAファイル一覧を取得",
+          "QASファイルID管理 --> main_py : QAファイル一覧を返却",
+          "main_py -> expected_QA_html : QAファイル一覧を渡して画面表示",
+          "",
+          "ユーザー -> expected_QA_html : ファイル選択",
+          "expected_QA_html -> expected_QA_html : ファイル名を画面に表示",
+          "",
+          "ユーザー -> expected_QA_html : 作成ボタン押下",
+          "alt ファイル未選択",
+          "    expected_QA_html -> expected_QA_html : アラート表示",
+          "else ファイル選択済み",
+          "    expected_QA_html -> main_py : ファイルアップロード・QA生成リクエスト送信",
+          "    main_py -> expected_QA_py : ファイル保存・QA生成処理開始",
+          "    expected_QA_py -> QACreator : QACreatorでPDF/ExcelからQA生成",
+          "    QACreator -> LLMService : LLMでカテゴリごとQA生成",
+          "    LLMService --> QACreator : 生成QAリストを返却",
+          "    QACreator -> LLMService : 重複QA判定・排除",
+          "    LLMService --> QACreator : 重複排除済みQAリストを返却",
+          "    QACreator --> expected_QA_py : カテゴリごとQAリストを返却",
+          "    expected_QA_py -> QAMerge : 複数ファイルのQA統合・マージ",
+          "    QAMerge -> LLMService : 類似QAグループ化・マージ",
+          "    LLMService --> QAMerge : 統合QAリストを返却",
+          "    QAMerge --> expected_QA_py : 統合済みQAリストを返却",
+          "    expected_QA_py -> expected_qas_json : QAデータを保存",
+          "    expected_QA_py -> QASファイルID管理 : ファイルID・ファイル名・日時を記録",
+          "    expected_QA_py --> main_py : 保存完了・ファイルID返却",
+          "    main_py -> QASファイルID管理 : 最新のQAファイル一覧を取得",
+          "    QASファイルID管理 --> main_py : QAファイル一覧を返却",
+          "    main_py -> expected_QA_html : QAファイル一覧を渡して画面再表示",
+          "end",
+          "",
+          "ユーザー -> expected_QA_html : 作成済みQA一覧からファイル選択",
+          "expected_QA_html -> expected_QA_html : 選択行をハイライト",
+          "",
+          "ユーザー -> expected_QA_html : 表示ボタン押下",
+          "alt ファイル未選択",
+          "    expected_QA_html -> expected_QA_html : アラート表示",
+          "else ファイル選択済み",
+          "    expected_QA_html -> main_py : QA詳細表示リクエスト",
+          "    main_py -> expected_qas_json : 指定file_idのQAデータ取得",
+          "    expected_qas_json --> main_py : QAデータ返却",
+          "    main_py -> expected_QA_result_html : QAデータ・ファイル名を渡して詳細画面表示",
+          "end",
+          "",
+          "ユーザー -> expected_QA_html : ダウンロードボタン押下",
+          "alt ファイル未選択",
+          "    expected_QA_html -> expected_QA_html : アラート表示",
+          "else ファイル選択済み",
+          "    expected_QA_html -> main_py : ダウンロードAPIリクエスト",
+          "    main_py -> expected_qas_json : 指定file_idのQAデータ取得",
+          "    expected_qas_json --> main_py : QAデータ返却",
+          "    main_py -> expected_QA_py : QAデータをExcelバイナリに変換",
+          "    expected_QA_py --> main_py : Excelバイナリデータ返却",
+          "    main_py -> ユーザー : Excelファイルとしてダウンロード提供",
+          "    alt ダウンロード失敗",
+          "        main_py -> expected_QA_html : エラーメッセージ返却",
+          "        expected_QA_html -> expected_QA_html : アラート表示",
+          "    end",
+          "end",
+          "@enduml"
+        ]
+      },
+      {
+        "scenario_name": "アクセス情報管理",
+        "sequence_diagram": [
+          "@startuml",
+          "actor ユーザー",
+          "participant Webサーバ",
+          "participant AccessInfoService",
+          "participant データベース",
+          "",
+          "group アクセス情報の取得（/api/access-info GET）",
+          "    ユーザー -> Webサーバ : アクセス情報取得を要求する()",
+          "    Webサーバ -> AccessInfoService : アクセス情報を取得する()",
+          "    AccessInfoService -> データベース : アクセス情報を読み込む()",
+          "    データベース --> AccessInfoService : アクセス情報データを返す()",
+          "    AccessInfoService --> Webサーバ : アクセス情報データを返す()",
+          "    Webサーバ --> ユーザー : アクセス情報データを返す()",
+          "end",
+          "",
+          "group アクセス情報の更新（/api/access-info/update POST）",
+          "    ユーザー -> Webサーバ : アクセス情報更新を要求する(新しいアクセス情報)",
+          "    Webサーバ -> AccessInfoService : アクセス情報を更新する(新しいアクセス情報)",
+          "    AccessInfoService -> データベース : アクセス情報を保存する(新しいアクセス情報)",
+          "    データベース --> AccessInfoService : 更新結果を返す()",
+          "    AccessInfoService --> Webサーバ : 更新結果を返す()",
+          "    Webサーバ --> ユーザー : 更新結果を返す()",
+          "end",
+          "",
+          "group アクセス情報の削除（/api/access-info/delete POST）",
+          "    ユーザー -> Webサーバ : アクセス情報削除を要求する(削除対象ID)",
+          "    Webサーバ -> AccessInfoService : アクセス情報を削除する(削除対象ID)",
+          "    AccessInfoService -> データベース : アクセス情報を削除する(削除対象ID)",
+          "    データベース --> AccessInfoService : 削除結果を返す()",
+          "    AccessInfoService --> Webサーバ : 削除結果を返す()",
+          "    Webサーバ --> ユーザー : 削除結果を返す()",
+          "end",
+          "@enduml"
+        ]
+      },
+      {
+        "scenario_name": "環境構築・運用自動化",
+        "sequence_diagram": [
+          "@startuml",
+          "actor ユーザー",
+          "participant docker_setup_sh",
+          "participant Dockerfile",
+          "participant docker_run_sh",
+          "participant Dockerエンジン",
+          "participant .env_sample",
+          "participant .dockerignore",
+          "participant requirements_txt",
+          "",
+          "ユーザー -> docker_setup_sh : 環境構築スクリプトを実行する",
+          "activate docker_setup_sh",
+          "",
+          "docker_setup_sh -> Dockerエンジン : ネットワーク・ボリュームを作成する()",
+          "activate Dockerエンジン",
+          "Dockerエンジン --> docker_setup_sh : 作成結果を返す()",
+          "deactivate Dockerエンジン",
+          "",
+          "docker_setup_sh -> Dockerエンジン : Dockerイメージをビルドする()",
+          "activate Dockerエンジン",
+          "Dockerエンジン -> Dockerfile : ビルド手順を読み込む",
+          "activate Dockerfile",
+          "Dockerfile -> .dockerignore : 除外ファイルリストを参照する",
+          "Dockerfile -> requirements_txt : 依存パッケージリストを参照する",
+          "Dockerfile -> .env_sample : 環境変数サンプルを参照する",
+          "Dockerfile --> Dockerエンジン : ビルド手順を完了する",
+          "deactivate Dockerfile",
+          "Dockerエンジン --> docker_setup_sh : イメージビルド結果を返す()",
+          "deactivate Dockerエンジン",
+          "",
+          "docker_setup_sh -> Dockerエンジン : コンテナを起動する(環境変数・ボリューム指定)",
+          "activate Dockerエンジン",
+          "Dockerエンジン --> docker_setup_sh : 起動結果を返す()",
+          "deactivate Dockerエンジン",
+          "",
+          "deactivate docker_setup_sh",
+          "",
+          "ユーザー -> docker_run_sh : コンテナ管理スクリプトを実行する",
+          "activate docker_run_sh",
+          "",
+          "docker_run_sh -> Dockerエンジン : コンテナを起動する(環境変数・ボリューム指定)",
+          "activate Dockerエンジン",
+          "Dockerエンジン --> docker_run_sh : 起動結果を返す()",
+          "deactivate Dockerエンジン",
+          "",
+          "docker_run_sh -> Dockerエンジン : コンテナの状態を確認する()",
+          "activate Dockerエンジン",
+          "Dockerエンジン --> docker_run_sh : 状態情報を返す()",
+          "deactivate Dockerエンジン",
+          "",
+          "docker_run_sh -> Dockerエンジン : コンテナを停止する()",
+          "activate Dockerエンジン",
+          "Dockerエンジン --> docker_run_sh : 停止結果を返す()",
+          "deactivate Dockerエンジン",
+          "",
+          "deactivate docker_run_sh",
+          "",
+          "@enduml"
+        ]
+      }
+    ]
+  },
+  "directory_structure": {
+    "folder_structure": [
+      "InvestorRelationsTool/",
+      "├── minutesgen/",
+      "└── templates/"
+    ],
+    "naming_conventions": {
+      "フォルダ命名": {
+        "purpose": "機能や役割ごとに英語の小文字（スネークケース）で命名し、可読性と整理性を高めるため。Pythonの慣例に従い、サブモジュールやテンプレートは明確な名称で管理する。",
+        "example": "minutesgen, templates"
+      },
+      "ファイル命名": {
+        "purpose": "英語の小文字（スネークケース）または用途に応じたキャメルケース・ハイフン区切りで命名し、ファイルの役割や内容が一目で分かるようにする。Pythonファイルはスネークケース、設定ファイルやサンプルはハイフンやアンダースコアを使用。",
+        "example": "main.py, session_manager.py, expected_QA.py, doc_conversion.py, extract_comments_and_qa.py, Dockerfile, .env.sample, access_info_file.sample.json"
+      },
+      "クラス命名": {
+        "purpose": "英語のパスカルケース（単語の先頭大文字）で命名し、データモデルやサービスクラスの役割を明確にする。Pythonの慣例に従い、Enumやデータモデルは一貫した命名を行う。",
+        "example": "SessionManager, SessionData, GijirokuData, ExpectedQAData, QAItem, CommentSection, QACreator, QAMerge, LLMService, AnthropicLLM"
+      },
+      "関数命名": {
+        "purpose": "英語の小文字スネークケースで命名し、動詞＋目的語の形で処理内容を明確に表現する。Pythonの慣例に従い、可読性と一貫性を重視する。",
+        "example": "create_gijiroku_data, extract_comments, transform_comment_data, generate_file_id, check_access_privileges, encrypt_bytes, decrypt_bytes, convert_gijiroku_to_docx, add_separator_line"
+      },
+      "変数命名": {
+        "purpose": "英語の小文字スネークケースで命名し、役割や内容が分かりやすいようにする。Pythonの慣例に従い、データ構造や一時変数も一貫した命名を行う。",
+        "example": "sessions, file_id, file_name, comments, expected_qas, qa_df, merged_qa, username, is_verified"
+      },
+      "定数命名": {
+        "purpose": "英語の全大文字＋アンダースコア区切りで命名し、変更不可の値や設定値を明確に区別する。Pythonの慣例に従い、環境変数名やカテゴリ定義などに使用する。",
+        "example": "ENCRYPTION_KEY, ACCESS_INFO_FILE, REQUIRE_LOGIN, COMMENT_CATEGORIES, QA_CATEGORIES, QA_SUB_CATEGORIES, CATEGORIES, COLUMNS"
+      }
+    },
+    "file_placement_rules": {
+      "メインアプリケーション": {
+        "description": "FastAPIを用いたアプリケーションのエントリーポイントや主要なAPIエンドポイント、画面遷移・データ処理・認証などの全体的な業務ロジックを実装するファイル群。",
+        "location": "./",
+        "example": "main.py"
+      },
+      "データモデル": {
+        "description": "議事録やQAデータ、コメント、セッション情報など、アプリケーション内で扱う主要なデータ構造やEnum、Pydanticモデルなどを定義するファイル群。",
+        "location": "./",
+        "example": "data_structures.py"
+      },
+      "ユーティリティ": {
+        "description": "WordやExcelファイルの変換補助、段落装飾など、特定の機能を補助する汎用的な関数や処理をまとめたファイル群。",
+        "location": "./",
+        "example": "doc_conversion_helpers.py"
+      },
+      "ドキュメント変換": {
+        "description": "議事録やQAデータをWord（docx）やExcel（xlsx）形式に変換する処理や、データの構造化・変換ロジックを実装するファイル群。",
+        "location": "./",
+        "example": "doc_conversion.py"
+      },
+      "想定QA生成・統合": {
+        "description": "PDF資料から想定QAを生成し、重複排除やマージ、LLM連携によるQA統合などを行う業務ロジックを実装するファイル群。",
+        "location": "./",
+        "example": "expected_QA.py"
+      },
+      "セッション・認証管理": {
+        "description": "ユーザー認証、セッションID発行・検証、アクセス情報の暗号化・復号など、認証・セッション管理に関するロジックを実装するファイル群。",
+        "location": "./",
+        "example": "session_manager.py"
+      },
+      "議事録生成処理": {
+        "description": "音声・動画ファイルからの文字起こし、話者分類、コメント・QA抽出、トピック分類、レポート変換など、議事録生成に関する各種処理をまとめたファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/extract_comments_and_qa.py"
+      },
+      "話者分類": {
+        "description": "IRミーティングの文字起こしデータから話者ごとに発言を集約し、AIモデルを用いて話者の役割（IR/Investor）を分類する処理を実装するファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/classify_ir_meeting_speakers.py"
+      },
+      "トピック抽出": {
+        "description": "QAペアから主題（トピック）を自動抽出し、分類・整理する処理を実装するファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/extract_qa_topic.py"
+      },
+      "コメント抽出": {
+        "description": "逐語録データと話者分類情報をもとに、投資家コメントやフィードバックをAIで抽出・分類し、構造化データとして返す処理を実装するファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/ir_extract_comments.py"
+      },
+      "話者ID修正": {
+        "description": "逐語録データの話者IDや発話内容の誤認識・分割ミスをAIで修正し、正規化・統合する処理を実装するファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/ir_fix_speaker_id_issues.py"
+      },
+      "QA抽出": {
+        "description": "会議逐語録から発話者ごとに発話をまとめ、AIを用いてQ&Aペアを抽出する処理を実装するファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/ir_group_into_questions.py"
+      },
+      "QAレポート変換": {
+        "description": "IR担当者と投資家の質疑応答ペアをAIでレポート形式に要約し、元データに追加して返す処理を実装するファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/qa_spoken_to_report.py"
+      },
+      "音声認識・文字起こし": {
+        "description": "音声ファイルからの文字起こし、話者分離、発言内容の整形、動画からの音声抽出など、音声認識に関する処理を実装するファイル群。",
+        "location": "minutesgen/",
+        "example": "minutesgen/transcribe_with_azure_speech.py"
+      },
+      "HTMLテンプレート": {
+        "description": "議事録作成・想定QA作成・ログイン・メニューなど、各種Web画面のレイアウトやUIを定義するHTMLテンプレートファイル群。",
+        "location": "templates/",
+        "example": "templates/take_minutes.html"
+      },
+      "設定ファイル": {
+        "description": "Dockerや環境変数、依存パッケージ、バージョン管理など、システム全体の設定や環境構築に関するファイル群。",
+        "location": "./",
+        "example": ".env.sample"
+      },
+      "Docker関連スクリプト": {
+        "description": "Dockerイメージのビルドやコンテナの起動・管理、環境セットアップを自動化するシェルスクリプトや設定ファイル群。",
+        "location": "./",
+        "example": "docker_setup.sh"
+      }
+    },
+    "module_partitioning_policies": [
+      {
+        "title": "機能ごとのパッケージ・ファイル分割",
+        "description": "本プロジェクトでは、議事録生成、想定QA生成、認証・セッション管理、データ変換（Word/Excel出力）などの主要な業務機能ごとにファイルやパッケージを分割しています。たとえば、minutesgen配下には音声認識、話者分類、コメント抽出、QA抽出、トピック分類、レポート変換など議事録生成に関する処理が細分化されており、expected_QA.pyは想定QA生成・統合の一連のワークフローをまとめています。session_manager.pyは認証・セッション管理を一手に担い、doc_conversion.pyやdoc_conversion_helpers.pyはデータのWord/Excel変換や装飾など出力処理を独立して実装しています。この方針により、各機能の責務が明確化され、保守性・拡張性が向上し、開発者が特定機能の修正や追加を容易に行える構造となっています。"
+      },
+      {
+        "title": "共通ユーティリティ・データモデルの独立モジュール化",
+        "description": "議事録やQAデータの構造体（GijirokuData, ExpectedQAData, QAItem, CommentSectionなど）や、Word文書装飾用の関数（add_separator_line）など、複数機能で共通利用されるデータモデルやユーティリティ関数は、data_structures.pyやdoc_conversion_helpers.pyなどの独立したファイルにまとめられています。これにより、重複実装を避け、共通処理の一元管理・再利用性を高めています。データモデルの一貫性が保たれ、変換・出力処理やAPIレスポンス生成などでの整合性が確保されます。"
+      },
+      {
+        "title": "外部サービス連携・インフラ管理の分離",
+        "description": "音声認識や自然言語処理（LLM, Azure Speech, AnthropicLLMなど）といった外部AIサービスとの連携処理は、minutesgen配下の各専用モジュールやexpected_QA.py内のLLMServiceなどに集約されています。また、Dockerfileやdocker_setup.sh、docker_run.shなどのインフラ構築・運用スクリプトはアプリケーション本体とは分離して管理されています。この分割により、アプリケーションロジックとインフラ・外部連携の責務が明確化され、環境構築やサービス連携の変更がアプリケーション本体に影響しにくくなっています。"
+      },
+      {
+        "title": "Web画面テンプレートの分離（MVC的分割）",
+        "description": "ユーザーインターフェース（HTMLテンプレート）はtemplatesディレクトリにまとめられ、サーバーサイドの業務ロジック（main.py等）とは明確に分離されています。各画面（議事録作成、想定QA作成、ログイン、メニュー等）ごとに専用のテンプレートファイルを用意し、サーバー側からデータを埋め込む設計です。この分割により、UI変更とサーバーロジックの独立性が保たれ、フロントエンド・バックエンドの役割分担やデザイン変更の柔軟性が向上しています。"
+      }
+    ]
+  }
+}
