@@ -10,6 +10,7 @@ from fastapi import status
 
 from app.utils.http_helpers import raise_http_error
 from cec_docifycode_common.models.project import (
+    GitRefType,
     Project,
     ProjectSettingItem,
     GitInfo,
@@ -289,6 +290,7 @@ class ProjectService:
                     "commit_id": git_info.get("commit_id"),
                     "sync_status": git_info.get("sync_status"),
                     "repo_provider": git_info.get("repo_provider"),
+                    "ref_type": git_info.get("ref_type"),
                 }
 
             # Build ai_programming object with decrypted credentials
@@ -958,6 +960,7 @@ class ProjectService:
         project_id: str,
         new_commit_ids: List[Any],
         sync_status: Optional[str] = None,
+        ref_type: Optional[GitRefType] = None,
     ) -> None:
         """
         Update project with commit IDs and sync status
@@ -1042,7 +1045,7 @@ class ProjectService:
 
             # Update project via repository
             is_updated = await self.repository.update_project_commit_ids(
-                project_id, serialized_commit_ids, sync_status
+                project_id, serialized_commit_ids, sync_status, ref_type
             )
 
             if is_updated:

@@ -343,7 +343,7 @@ class SourceCodeService:
                 project_id=project_id,
                 folder_ids=folder_ids,
                 limit=50,
-                type=data_type,
+                data_type=data_type,
             )
             all_documents.extend(files_by_folders)
             logger.debug(

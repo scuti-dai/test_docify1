@@ -332,12 +332,12 @@ async def create_project(
 
         # Validate Git repository only for SOURCE_CODE base_specification
         if project_request.git_spec and project_request.git_spec.repository_url:
-            # if await project_service.check_repository_exists(
-            #     project_request.git_spec.repository_url
-            # ):
-            #     raise_http_error(
-            #         status.HTTP_409_CONFLICT, error_key="REPOSITORY_ALREADY_EXISTS"
-            #     )
+            if await project_service.check_repository_exists(
+                project_request.git_spec.repository_url
+            ):
+                raise_http_error(
+                    status.HTTP_409_CONFLICT, error_key="REPOSITORY_ALREADY_EXISTS"
+                )
 
             git_type = await validate_git_repository(
                 repository_url=project_request.git_spec.repository_url,
@@ -557,12 +557,12 @@ async def update_project(
                     error_key="GIT_INVALID_URL",
                 )
 
-            # if await project_service.check_repository_exists(
-            #     project_data.git_spec.repository_url, project_id
-            # ):
-            #     raise_http_error(
-            #         status.HTTP_409_CONFLICT, error_key="REPOSITORY_ALREADY_EXISTS"
-            #     )
+            if await project_service.check_repository_exists(
+                project_data.git_spec.repository_url, project_id
+            ):
+                raise_http_error(
+                    status.HTTP_409_CONFLICT, error_key="REPOSITORY_ALREADY_EXISTS"
+                )
 
             # Validate Git repository
             git_type = await validate_git_repository(

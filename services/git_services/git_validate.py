@@ -12,6 +12,7 @@ from app.utils.http_helpers import raise_http_error
 from fastapi import status
 
 from app.services.logs_service import save_exception_log_sync
+from cec_docifycode_common.models.project import GitRefType
 from cec_docifycode_common.repositories.source_code_summaries_repository import (
     SourceCodeSummariesRepository,
 )
@@ -80,14 +81,25 @@ def handle_git_api_error(
             logger.warning(
                 f"[{function_name}] Authentication failed - repository_url={repository_url}"
             )
-        raise_http_error(
-            status.HTTP_403_FORBIDDEN,
-            error_key=(
-                "GIT_AUTHENTICATION_FAILED"
-                if not is_ai_programming
-                else "AI_PROGRAMMING_AUTHENTICATION_FAILED"
-            ),
-        )
+
+        if "requires authentication" in response.text.lower():
+            raise_http_error(
+                status.HTTP_401_UNAUTHORIZED,
+                error_key=(
+                    "GIT_REPOSITORY_ACCESS_DENIED"
+                    if not is_ai_programming
+                    else "AI_PROGRAMMING_REPOSITORY_ACCESS_DENIED"
+                ),
+            )
+        else:
+            raise_http_error(
+                status.HTTP_403_FORBIDDEN,
+                error_key=(
+                    "GIT_AUTHENTICATION_FAILED"
+                    if not is_ai_programming
+                    else "AI_PROGRAMMING_AUTHENTICATION_FAILED"
+                ),
+            )
     elif not response.is_success:
         if branch_name:
             logger.error(
@@ -268,6 +280,38 @@ async def validate_gitbucket_repository(
         raise
 
 
+async def github_tag_exists(
+    client: httpx.AsyncClient,
+    owner: str,
+    repo: str,
+    tag_name: str,
+    headers: dict,
+) -> bool:
+    tags_url = f"https://api.github.com/repos/{owner}/{repo}/tags"
+    resp = await client.get(tags_url, headers=headers)
+
+    if resp.status_code != 200:
+        return False
+
+    tags = resp.json()
+    return any(tag.get("name") == tag_name for tag in tags)
+
+
+async def github_commit_exists(
+    client: httpx.AsyncClient,
+    owner: str,
+    repo: str,
+    sha: str,
+    headers: dict,
+) -> bool:
+    """Kiểm tra xem một SHA (commit hash) có tồn tại hay không"""
+    commit_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}"
+    resp = await client.get(commit_url, headers=headers)
+
+    # Nếu status là 200, commit đó tồn tại
+    return resp.status_code == 200
+
+
 async def validate_github_branch(
     repository_url: str,
     branch_name: str,
@@ -313,6 +357,21 @@ async def validate_github_branch(
             )
             branch_response = await client.get(branch_url, headers=headers)
 
+            if branch_response.status_code == 404:
+                logger.info("[validate_github_branch] Branch not found, checking TAG")
+
+                if await github_tag_exists(client, owner, repo, branch_name, headers):
+                    logger.info("[validate_github_branch] Found as TAG")
+                    return GitRefType.TAG
+
+                # Check if SHA (Commit) exists
+                logger.info("[validate_github_branch] Tag not found, checking SHA")
+                if await github_commit_exists(
+                    client, owner, repo, branch_name, headers
+                ):
+                    logger.info("[validate_github_branch] Found as SHA")
+                    return GitRefType.SHA1
+
             handle_git_api_error(
                 branch_response,
                 repository_url,
@@ -323,7 +382,7 @@ async def validate_github_branch(
         logger.info(
             f"[validate_github_branch] Success - repository_url={repository_url}, branch_name={branch_name}"
         )
-        return True
+        return GitRefType.BRANCH
 
     except Exception as e:
         error_message = (
@@ -333,6 +392,33 @@ async def validate_github_branch(
         save_exception_log_sync(e, error_message, __name__)
 
         raise
+
+
+async def gitbucket_tag_exists(
+    client: httpx.AsyncClient,
+    base_url: str,
+    auth,
+    tag_name: str,
+) -> bool:
+    resp = await client.get(f"{base_url}/tags", auth=auth)
+    if resp.status_code != 200:
+        return False
+
+    tags = resp.json()
+    return any(tag.get("name") == tag_name for tag in tags)
+
+
+async def gitbucket_commit_exists(
+    client: httpx.AsyncClient,
+    base_api: str,
+    auth: tuple,
+    sha: str,
+) -> bool:
+    """Check if a SHA (Commit) exists on GitBucket"""
+    # GitBucket API v3 is compatible with GitHub API
+    commit_url = f"{base_api}/commits/{sha}"
+    resp = await client.get(commit_url, auth=auth)
+    return resp.status_code == 200
 
 
 async def validate_gitbucket_branch(
@@ -376,6 +462,7 @@ async def validate_gitbucket_branch(
 
         # Prepare authentication
         auth = (user_name, password)
+        base_api = f"{protocol}{host}/api/v3/repos/{repo_path}"
 
         async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
             # Check if branch exists
@@ -383,6 +470,16 @@ async def validate_gitbucket_branch(
                 f"{protocol}{host}/api/v3/repos/{repo_path}/branches/{branch_name}"
             )
             branch_response = await client.get(branch_url, auth=auth)
+
+            if branch_response.status_code == 404:
+                if await gitbucket_tag_exists(client, base_api, auth, branch_name):
+                    return GitRefType.TAG
+
+                # Check if SHA (Commit) exists
+                logger.info("[validate_gitbucket_branch] Tag not found, checking SHA")
+                if await gitbucket_commit_exists(client, base_api, auth, branch_name):
+                    logger.info("[validate_gitbucket_branch] Found as SHA")
+                    return GitRefType.SHA1
 
             handle_git_api_error(
                 branch_response,
@@ -394,7 +491,7 @@ async def validate_gitbucket_branch(
         logger.info(
             f"[validate_gitbucket_branch] Success - repository_url={repository_url}, branch_name={branch_name}"
         )
-        return True
+        return GitRefType.BRANCH
 
     except Exception as e:
         error_message = (
@@ -483,11 +580,11 @@ async def validate_git_branch(
 
         # Validate branch based on Git type
         if git_type == GitType.GITHUB:
-            await validate_github_branch(
+            result = await validate_github_branch(
                 repository_url, branch_name, user_name, token_password
             )
         elif git_type == GitType.GITBUCKET:
-            await validate_gitbucket_branch(
+            result = await validate_gitbucket_branch(
                 repository_url, branch_name, user_name, token_password
             )
         else:
@@ -497,7 +594,7 @@ async def validate_git_branch(
             raise_http_error(status.HTTP_400_BAD_REQUEST, error_key="GIT_INVALID_URL")
 
         logger.info("[validate_git_branch] Success")
-        return True
+        return result
 
     except Exception as e:
         error_message = (

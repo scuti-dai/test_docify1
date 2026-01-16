@@ -148,7 +148,7 @@ async def clone_code_from_git(
 
     # Validate branch exists
     try:
-        await validate_git_branch(
+        result_validate = await validate_git_branch(
             repository_url=repository_url,
             branch_name=branch_name,
             user_name=user_name,
@@ -202,12 +202,18 @@ async def clone_code_from_git(
         logger.info(f"[clone_code_from_git] Created temp directory: {temp_dir}")
 
         # Clone repository
-        repo = clone_repository(clone_url, branch_name, temp_dir, depth=None)
+        repo = clone_repository(
+            clone_url,
+            branch_name,
+            temp_dir,
+            depth=None,
+            result_validate=result_validate,
+        )
 
         repo_root = repo.working_dir
 
         # Check if folders already have files in cloned repo before processing
-        # await _check_folders_have_files(repo_root, directory, base_specification)
+        await _check_folders_have_files(repo_root, directory, base_specification)
 
         # Process each declared folder type
         await _process_all_folders(
@@ -222,7 +228,11 @@ async def clone_code_from_git(
 
         # Get all commit IDs from branch and update project
         commit_ids = get_all_commit_ids(repo, branch_name)
-        await project_service.update_project_commit_ids(project_id, commit_ids)
+        await project_service.update_project_commit_ids(
+            project_id,
+            commit_ids,
+            ref_type=result_validate,
+        )
 
         logger.info("[clone_code_from_git] Success")
 

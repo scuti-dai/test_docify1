@@ -328,35 +328,7 @@ async def change_git_branch(
         )
 
         # Clone repository temporarily to get commit IDs
-        temp_dir = None
         commit_ids = []
-
-        try:
-            # Prepare clone URL with credentials
-            clone_url = _prepare_clone_url(repository_url, user_name, token_password)
-
-            # Create temporary directory for cloning
-            temp_dir = tempfile.mkdtemp()
-            logger.info(
-                f"[change_git_branch] Created temp directory - temp_dir={temp_dir}"
-            )
-
-            # Clone repository to get commit IDs
-            repo = clone_repository(clone_url, new_branch, temp_dir, depth=None)
-
-            # Get all commit IDs from new branch
-            commit_ids = get_all_commit_ids(repo, new_branch)
-            logger.info(
-                f"[change_git_branch] Got commit IDs from new branch - count={len(commit_ids)}"
-            )
-        except Exception as e:
-            error_message = f"[change_git_branch] Failed to get commit IDs, will continue with clone: {e}"
-            logger.warning(error_message)
-            save_exception_log_sync(e, error_message, __name__, level=LogLevel.WARNING)
-
-        finally:
-            # Clean up temporary directory
-            cleanup_temp_dir(temp_dir, repo)
 
         # Clone and process files
         await clone_code_from_git(
@@ -377,7 +349,7 @@ async def change_git_branch(
             "success": True,
             "has_local_changes": False,
             "message": f"Successfully switched to branch '{new_branch}'",
-            "commit_ids": commit_ids,
+            # "commit_ids": commit_ids,
         }
 
     except HTTPException:

@@ -26,6 +26,8 @@ from app.services.logs_service import save_exception_log_sync, LogLevel
 from pathlib import Path
 from urllib.parse import quote
 
+from cec_docifycode_common.models.project import GitRefType
+
 logger = logging.getLogger(__name__)
 
 
@@ -469,7 +471,11 @@ async def _get_gitbucket_branches(
 
 
 def clone_repository(
-    clone_url: str, branch_name: str, temp_dir: str, depth: Optional[int] = None
+    clone_url: str,
+    branch_name: str,
+    temp_dir: str,
+    depth: Optional[int] = None,
+    result_validate: Optional[str] = None,
 ) -> Repo:
     """
     Clone Git repository to temporary directory
@@ -489,6 +495,20 @@ def clone_repository(
     logger.info(f"[clone_repository] Start - branch_name={branch_name}, depth={depth}")
 
     try:
+        # CASE 1: result_validate is SHA1 (Commit Hash)
+        if result_validate == GitRefType.SHA1:
+            logger.info(f"[clone_repository] Cloning for SHA1: {branch_name}")
+            # Clone repo (without branch parameter because branch_name is now SHA)
+            # Don't use depth because SHA can be deep in history
+            repo = Repo.clone_from(clone_url, temp_dir)
+
+            # Checkout to specific commit
+            repo.git.checkout(branch_name)
+            logger.info(
+                f"[clone_repository] Checked out to SHA {branch_name} successfully"
+            )
+            return repo
+
         if depth is not None:
             # Shallow clone with depth limit
             repo = Repo.clone_from(
